@@ -140,9 +140,19 @@ const TreeItem = ({
       />
 
       <div className="tree-item-content">
-        <div className="tree-item-icon">
+        {/* <div className="tree-item-icon">
           {type === "directory" ? <Folder size={16} /> : <File size={16} />}
-        </div>
+        </div> */}
+
+        {/* <div className="tree-item-icon">
+          {type === "directory" ? "" : <File size={14} />}
+        </div> */}
+
+        {type === "file" && (
+          <div className="tree-item-icon">
+            <File size={14} />
+          </div>
+        )}
 
         <div className="tree-item-name">{name}</div>
 
