@@ -1,5 +1,10 @@
 import React, { useRef, useEffect } from "react";
 import { TreeItemProps, TreeNode } from "../types/FileTypes";
+import {
+  MouseEventType,
+  ChangeEventType,
+  UseRefType,
+} from "../types/ReactTypes";
 import { ChevronRight, File, Folder } from "lucide-react";
 import { arePathsEqual } from "../utils/pathUtils";
 
@@ -11,7 +16,7 @@ const TreeItem = ({
   toggleExpanded,
 }: TreeItemProps) => {
   const { id, name, path, type, level, isExpanded, fileData } = node;
-  const checkboxRef = useRef<HTMLInputElement>(null);
+  const checkboxRef = useRef(null) as UseRefType<HTMLInputElement>;
 
   const isSelected =
     type === "file" &&
@@ -76,12 +81,12 @@ const TreeItem = ({
     }
   }, [isDirectoryPartiallySelected]);
 
-  const handleToggle = (e: React.MouseEvent) => {
+  const handleToggle = (e: MouseEventType<HTMLDivElement>) => {
     e.stopPropagation();
     toggleExpanded(id);
   };
 
-  const handleItemClick = (e: React.MouseEvent) => {
+  const handleItemClick = (e: MouseEventType<HTMLDivElement>) => {
     if (type === "directory") {
       toggleExpanded(id);
     } else if (type === "file" && !isDisabled) {
@@ -89,7 +94,7 @@ const TreeItem = ({
     }
   };
 
-  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCheckboxChange = (e: ChangeEventType<HTMLInputElement>) => {
     e.stopPropagation();
     if (type === "file") {
       toggleFileSelection(path);

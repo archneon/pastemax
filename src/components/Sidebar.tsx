@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { SidebarProps, TreeNode } from "../types/FileTypes";
+import { MouseEventType, UseStateType } from "../types/ReactTypes";
 import SearchBar from "./SearchBar";
 import TreeItem from "./TreeItem";
 
@@ -17,7 +18,7 @@ const Sidebar = ({
   expandedNodes,
   toggleExpanded,
 }: SidebarProps) => {
-  const [fileTree, setFileTree] = useState<TreeNode[]>([]);
+  const [fileTree, setFileTree] = useState([]) as UseStateType<TreeNode[]>;
   const [isTreeBuildingComplete, setIsTreeBuildingComplete] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [isResizing, setIsResizing] = useState(false);
@@ -27,7 +28,7 @@ const Sidebar = ({
   const MAX_SIDEBAR_WIDTH = 500;
 
   // Handle mouse down for resizing
-  const handleResizeStart = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleResizeStart = (e: MouseEventType<HTMLDivElement>) => {
     e.preventDefault();
     setIsResizing(true);
   };
@@ -93,13 +94,14 @@ const Sidebar = ({
             if (!part) continue;
 
             currentPath = currentPath ? `${currentPath}/${part}` : part;
-            
+
             // Use the original file.path for files to avoid path duplication
-            const fullPath = i === parts.length - 1 
-              ? file.path // For files, use the original path
-              : (selectedFolder 
-                  ? `${selectedFolder}/${currentPath}` 
-                  : currentPath); // For directories
+            const fullPath =
+              i === parts.length - 1
+                ? file.path // For files, use the original path
+                : selectedFolder
+                ? `${selectedFolder}/${currentPath}`
+                : currentPath; // For directories
 
             if (i === parts.length - 1) {
               // This is a file
@@ -131,7 +133,7 @@ const Sidebar = ({
         // Convert the nested object structure to the TreeNode array format
         const convertToTreeNodes = (
           node: Record<string, any>,
-          level = 0,
+          level = 0
         ): TreeNode[] => {
           return Object.keys(node).map((key) => {
             const item = node[key];
