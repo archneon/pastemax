@@ -5,7 +5,11 @@ import CopyButton from "./components/CopyButton";
 import { FileData } from "./types/FileTypes";
 import { ThemeProvider } from "./context/ThemeContext";
 import ThemeToggle from "./components/ThemeToggle";
-import { generateAsciiFileTree, normalizePath, arePathsEqual } from "./utils/pathUtils";
+import {
+  generateAsciiFileTree,
+  normalizePath,
+  arePathsEqual,
+} from "./utils/pathUtils";
 
 // Access the electron API from the window object
 declare global {
@@ -16,7 +20,7 @@ declare global {
         on: (channel: string, func: (...args: any[]) => void) => void;
         removeListener: (
           channel: string,
-          func: (...args: any[]) => void,
+          func: (...args: any[]) => void
         ) => void;
       };
     };
@@ -44,25 +48,22 @@ const App = () => {
   );
   const [allFiles, setAllFiles] = useState([] as FileData[]);
   const [selectedFiles, setSelectedFiles] = useState(
-    savedFiles ? JSON.parse(savedFiles) : [] as string[]
+    savedFiles ? JSON.parse(savedFiles) : ([] as string[])
   );
-  const [sortOrder, setSortOrder] = useState(
-    savedSortOrder || "tokens-desc"
-  );
+  const [sortOrder, setSortOrder] = useState(savedSortOrder || "tokens-desc");
   const [searchTerm, setSearchTerm] = useState(savedSearchTerm || "");
   const [expandedNodes, setExpandedNodes] = useState(
     {} as Record<string, boolean>
   );
   const [displayedFiles, setDisplayedFiles] = useState([] as FileData[]);
-  const [processingStatus, setProcessingStatus] = useState(
-    { status: "idle", message: "" } as {
-      status: "idle" | "processing" | "complete" | "error";
-      message: string;
-    }
-  );
+  const [processingStatus, setProcessingStatus] = useState({
+    status: "idle",
+    message: "",
+  } as {
+    status: "idle" | "processing" | "complete" | "error";
+    message: string;
+  });
   const [includeFileTree, setIncludeFileTree] = useState(false);
-  
-
 
   // State for sort dropdown
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
@@ -73,7 +74,7 @@ const App = () => {
   // Load expanded nodes state from localStorage
   useEffect(() => {
     const savedExpandedNodes = localStorage.getItem(
-      STORAGE_KEYS.EXPANDED_NODES,
+      STORAGE_KEYS.EXPANDED_NODES
     );
     if (savedExpandedNodes) {
       try {
@@ -97,7 +98,7 @@ const App = () => {
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEYS.SELECTED_FILES,
-      JSON.stringify(selectedFiles),
+      JSON.stringify(selectedFiles)
     );
   }, [selectedFiles]);
 
@@ -114,23 +115,21 @@ const App = () => {
   // Load initial data from saved folder
   useEffect(() => {
     if (!isElectron || !selectedFolder) return;
-  
+
     // Use a flag in sessionStorage to ensure we only load data once per session
     const hasLoadedInitialData = sessionStorage.getItem("hasLoadedInitialData");
     if (hasLoadedInitialData === "true") return;
-  
+
     console.log("Loading saved folder on startup:", selectedFolder);
     setProcessingStatus({
       status: "processing",
       message: "Loading files from previously selected folder...",
     });
     window.electron.ipcRenderer.send("request-file-list", selectedFolder);
-  
+
     // Mark that we've loaded the initial data
     sessionStorage.setItem("hasLoadedInitialData", "true");
   }, [isElectron, selectedFolder]);
-  
-
 
   // Listen for folder selection from main process
   useEffect(() => {
@@ -175,7 +174,7 @@ const App = () => {
       const selectablePaths = files
         .filter(
           (file: FileData) =>
-            !file.isBinary && !file.isSkipped && !file.excludedByDefault, // Respect the excludedByDefault flag
+            !file.isBinary && !file.isSkipped && !file.excludedByDefault // Respect the excludedByDefault flag
         )
         .map((file: FileData) => file.path);
 
@@ -194,21 +193,21 @@ const App = () => {
     window.electron.ipcRenderer.on("file-list-data", handleFileListData);
     window.electron.ipcRenderer.on(
       "file-processing-status",
-      handleProcessingStatus,
+      handleProcessingStatus
     );
 
     return () => {
       window.electron.ipcRenderer.removeListener(
         "folder-selected",
-        handleFolderSelected,
+        handleFolderSelected
       );
       window.electron.ipcRenderer.removeListener(
         "file-list-data",
-        handleFileListData,
+        handleFileListData
       );
       window.electron.ipcRenderer.removeListener(
         "file-processing-status",
-        handleProcessingStatus,
+        handleProcessingStatus
       );
     };
   }, [isElectron, sortOrder, searchTerm]);
@@ -227,7 +226,7 @@ const App = () => {
   const applyFiltersAndSort = (
     files: FileData[],
     sort: string,
-    filter: string,
+    filter: string
   ) => {
     let filtered = files;
 
@@ -237,7 +236,7 @@ const App = () => {
       filtered = files.filter(
         (file) =>
           file.name.toLowerCase().includes(lowerFilter) ||
-          file.path.toLowerCase().includes(lowerFilter),
+          file.path.toLowerCase().includes(lowerFilter)
       );
     }
 
@@ -264,14 +263,18 @@ const App = () => {
   const toggleFileSelection = (filePath: string) => {
     // Normalize the incoming file path to handle cross-platform issues
     const normalizedPath = normalizePath(filePath);
-    
+
     setSelectedFiles((prev: string[]) => {
       // Check if the file is already selected
-      const isSelected = prev.some(path => arePathsEqual(path, normalizedPath));
-      
+      const isSelected = prev.some((path) =>
+        arePathsEqual(path, normalizedPath)
+      );
+
       if (isSelected) {
         // Remove the file from selected files
-        const newSelection = prev.filter((path: string) => !arePathsEqual(path, normalizedPath));
+        const newSelection = prev.filter(
+          (path: string) => !arePathsEqual(path, normalizedPath)
+        );
         return newSelection;
       } else {
         // Add the file to selected files
@@ -285,22 +288,24 @@ const App = () => {
   const toggleFolderSelection = (folderPath: string, isSelected: boolean) => {
     // Normalize the folder path
     const normalizedFolderPath = normalizePath(folderPath);
-    
+
     const filesInFolder = allFiles.filter(
       (file: FileData) =>
-        normalizePath(file.path).startsWith(normalizedFolderPath) && 
-        !file.isBinary && 
-        !file.isSkipped,
+        normalizePath(file.path).startsWith(normalizedFolderPath) &&
+        !file.isBinary &&
+        !file.isSkipped
     );
 
     if (isSelected) {
       // Add all files from this folder that aren't already selected
-      const filePaths = filesInFolder.map((file: FileData) => normalizePath(file.path));
-      
+      const filePaths = filesInFolder.map((file: FileData) =>
+        normalizePath(file.path)
+      );
+
       setSelectedFiles((prev: string[]) => {
         const newSelection = [...prev];
         filePaths.forEach((path: string) => {
-          if (!newSelection.some(p => arePathsEqual(p, path))) {
+          if (!newSelection.some((p) => arePathsEqual(p, path))) {
             newSelection.push(path);
           }
         });
@@ -311,11 +316,72 @@ const App = () => {
       setSelectedFiles((prev: string[]) => {
         const newSelection = prev.filter(
           (path: string) =>
-            !filesInFolder.some((file: FileData) => arePathsEqual(normalizePath(file.path), path)),
+            !filesInFolder.some((file: FileData) =>
+              arePathsEqual(normalizePath(file.path), path)
+            )
         );
         return newSelection;
       });
     }
+  };
+
+  // Refresh the current folder to show new files/directories
+  const refreshFolder = () => {
+    if (!selectedFolder || !isElectron) return;
+
+    setProcessingStatus({
+      status: "processing",
+      message: "Refreshing folder...",
+    });
+
+    // Save current selection before refreshing
+    const currentSelection = [...selectedFiles];
+
+    // Set up a listener for file list data that preserves selection
+    const handleRefreshFileListData = (files: FileData[]) => {
+      console.log("Received refreshed file list data:", files.length, "files");
+      setAllFiles(files);
+
+      // Apply filters and sort to the new files
+      applyFiltersAndSort(files, sortOrder, searchTerm);
+
+      // Keep only the previously selected files that still exist
+      const updatedSelection = currentSelection.filter((selectedPath) =>
+        files.some((file) => arePathsEqual(file.path, selectedPath))
+      );
+
+      setSelectedFiles(updatedSelection);
+
+      setProcessingStatus({
+        status: "complete",
+        message: `Refreshed ${files.length} files`,
+      });
+
+      // Remove this one-time listener
+      window.electron.ipcRenderer.removeListener(
+        "file-list-data",
+        handleRefreshFileListData
+      );
+    };
+
+    // Add the one-time listener
+    window.electron.ipcRenderer.on("file-list-data", handleRefreshFileListData);
+
+    // Request file list from main process
+    window.electron.ipcRenderer.send("request-file-list", selectedFolder);
+  };
+
+  // Reload the current folder (reselect all files)
+  const reloadFolder = () => {
+    if (!selectedFolder || !isElectron) return;
+
+    setProcessingStatus({
+      status: "processing",
+      message: "Reloading folder...",
+    });
+
+    // Request file list from main process
+    window.electron.ipcRenderer.send("request-file-list", selectedFolder);
   };
 
   // Handle sort change
@@ -369,13 +435,13 @@ const App = () => {
     }
 
     let concatenatedString = "";
-    
+
     // Add ASCII file tree if enabled
     if (includeFileTree && selectedFolder) {
       const asciiTree = generateAsciiFileTree(sortedSelected, selectedFolder);
       concatenatedString += `<file_map>\n${selectedFolder}\n${asciiTree}\n</file_map>\n\n`;
     }
-    
+
     sortedSelected.forEach((file: FileData) => {
       concatenatedString += `\n\n// ---- File: ${file.name} ----\n\n`;
       concatenatedString += file.content;
@@ -405,7 +471,7 @@ const App = () => {
   const deselectAllFiles = () => {
     const displayedPaths = displayedFiles.map((file: FileData) => file.path);
     setSelectedFiles((prev: string[]) =>
-      prev.filter((path: string) => !displayedPaths.includes(path)),
+      prev.filter((path: string) => !displayedPaths.includes(path))
     );
   };
 
@@ -428,7 +494,7 @@ const App = () => {
       // Save to localStorage
       localStorage.setItem(
         STORAGE_KEYS.EXPANDED_NODES,
-        JSON.stringify(newState),
+        JSON.stringify(newState)
       );
 
       return newState;
@@ -455,6 +521,15 @@ const App = () => {
               >
                 Select Folder
               </button>
+              {selectedFolder && (
+                <button
+                  className="select-folder-btn"
+                  onClick={reloadFolder}
+                  disabled={processingStatus.status === "processing"}
+                >
+                  Reload
+                </button>
+              )}
             </div>
           </div>
         </header>
@@ -483,6 +558,8 @@ const App = () => {
               onSearchChange={handleSearchChange}
               selectAllFiles={selectAllFiles}
               deselectAllFiles={deselectAllFiles}
+              refreshFolder={refreshFolder}
+              reloadFolder={reloadFolder}
               expandedNodes={expandedNodes}
               toggleExpanded={toggleExpanded}
             />
@@ -529,8 +606,24 @@ const App = () => {
               />
 
               <div className="copy-button-container">
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", width: "100%", maxWidth: "400px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "12px",
+                    width: "100%",
+                    maxWidth: "400px",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={includeFileTree}
@@ -542,7 +635,9 @@ const App = () => {
                     text={getSelectedFilesContent()}
                     className="primary full-width"
                   >
-                    <span>COPY ALL SELECTED ({selectedFiles.length} files)</span>
+                    <span>
+                      COPY ALL SELECTED ({selectedFiles.length} files)
+                    </span>
                   </CopyButton>
                 </div>
               </div>

@@ -15,6 +15,7 @@ const Sidebar = ({
   onSearchChange,
   selectAllFiles,
   deselectAllFiles,
+  refreshFolder,
   expandedNodes,
   toggleExpanded,
 }: SidebarProps) => {
@@ -305,6 +306,9 @@ const Sidebar = ({
         </button>
         <button className="sidebar-action-btn" onClick={deselectAllFiles}>
           Deselect All
+        </button>
+        <button className="sidebar-action-btn" onClick={refreshFolder}>
+          Refresh
         </button>
       </div>
 

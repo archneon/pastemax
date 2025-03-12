@@ -33,6 +33,8 @@ export interface SidebarProps {
   onSearchChange: (term: string) => void;
   selectAllFiles: () => void;
   deselectAllFiles: () => void;
+  refreshFolder: () => void;
+  reloadFolder: () => void;
   expandedNodes: Record<string, boolean>;
   toggleExpanded: (nodeId: string) => void;
 }
