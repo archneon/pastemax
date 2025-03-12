@@ -143,7 +143,7 @@ const App = () => {
       if (typeof folderPath === "string") {
         console.log("Folder selected:", folderPath);
         setSelectedFolder(folderPath);
-        // We'll select all files after they're loaded
+        // Clear selected files
         setSelectedFiles([]);
         setProcessingStatus({
           status: "processing",
@@ -170,15 +170,8 @@ const App = () => {
       // Apply filters and sort to the new files
       applyFiltersAndSort(files, sortOrder, searchTerm);
 
-      // Select only files that are not binary, not skipped, and not excluded by default
-      const selectablePaths = files
-        .filter(
-          (file: FileData) =>
-            !file.isBinary && !file.isSkipped && !file.excludedByDefault // Respect the excludedByDefault flag
-        )
-        .map((file: FileData) => file.path);
-
-      setSelectedFiles(selectablePaths);
+      // By default, don't select any files - leave them all unselected
+      setSelectedFiles([]);
     };
 
     const handleProcessingStatus = (status: {
@@ -371,7 +364,7 @@ const App = () => {
     window.electron.ipcRenderer.send("request-file-list", selectedFolder);
   };
 
-  // Reload the current folder (reselect all files)
+  // Reload the current folder (reset selection to default state)
   const reloadFolder = () => {
     if (!selectedFolder || !isElectron) return;
 
@@ -379,6 +372,32 @@ const App = () => {
       status: "processing",
       message: "Reloading folder...",
     });
+
+    // Set up a listener for file list data that resets selection
+    const handleReloadFileListData = (files: FileData[]) => {
+      console.log("Received reloaded file list data:", files.length, "files");
+      setAllFiles(files);
+
+      // Apply filters and sort to the new files
+      applyFiltersAndSort(files, sortOrder, searchTerm);
+
+      // Reset selection to default state (all unselected)
+      setSelectedFiles([]);
+
+      setProcessingStatus({
+        status: "complete",
+        message: `Reloaded ${files.length} files`,
+      });
+
+      // Remove this one-time listener
+      window.electron.ipcRenderer.removeListener(
+        "file-list-data",
+        handleReloadFileListData
+      );
+    };
+
+    // Add the one-time listener
+    window.electron.ipcRenderer.on("file-list-data", handleReloadFileListData);
 
     // Request file list from main process
     window.electron.ipcRenderer.send("request-file-list", selectedFolder);

@@ -287,10 +287,10 @@ const Sidebar = ({
 
   return (
     <div className="sidebar" style={{ width: `${sidebarWidth}px` }}>
-      <div className="sidebar-header">
+      {/* <div className="sidebar-header">
         <div className="sidebar-title">Files</div>
         <div className="sidebar-folder-path">{selectedFolder}</div>
-      </div>
+      </div> */}
 
       <div className="sidebar-search">
         <SearchBar
