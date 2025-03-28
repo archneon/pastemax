@@ -458,11 +458,17 @@ const App = () => {
     // Add ASCII file tree if enabled
     if (includeFileTree && selectedFolder) {
       const asciiTree = generateAsciiFileTree(sortedSelected, selectedFolder);
-      concatenatedString += `<file_map>\n${selectedFolder}\n${asciiTree}\n</file_map>\n\n`;
+      concatenatedString += `Project structure:\n${selectedFolder}\n${asciiTree}`;
     }
 
     sortedSelected.forEach((file: FileData) => {
-      concatenatedString += `\n\n// ---- File: ${file.name} ----\n\n`;
+      // Get relative path from selected folder
+      let relativePath = file.path;
+      if (selectedFolder && file.path.startsWith(selectedFolder)) {
+        relativePath = file.path.substring(selectedFolder.length + 1); // +1 for the slash
+      }
+
+      concatenatedString += `\n\n#### File: ${relativePath}\n\n`;
       concatenatedString += file.content;
     });
 
@@ -523,7 +529,7 @@ const App = () => {
   return (
     <ThemeProvider>
       <div className="app-container">
-        <header className="header">
+        {/* <header className="header">
           <h1>PasteMax</h1>
           <div className="header-actions">
             <ThemeToggle />
@@ -551,7 +557,7 @@ const App = () => {
               )}
             </div>
           </div>
-        </header>
+        </header> */}
 
         {processingStatus.status === "processing" && (
           <div className="processing-indicator">
@@ -583,6 +589,37 @@ const App = () => {
               toggleExpanded={toggleExpanded}
             />
             <div className="content-area">
+              <div className="content-header">
+                {/* <div className="content-title">Selected Files</div> */}
+                <h1>PasteMax</h1>
+                <div className="header-actions">
+                  <ThemeToggle />
+                  <div className="folder-info">
+                    {selectedFolder ? (
+                      <div className="selected-folder">{selectedFolder}</div>
+                    ) : (
+                      <span>No folder selected</span>
+                    )}
+                    <button
+                      className="select-folder-btn"
+                      onClick={openFolder}
+                      disabled={processingStatus.status === "processing"}
+                    >
+                      Select Folder
+                    </button>
+                    {selectedFolder && (
+                      <button
+                        className="select-folder-btn"
+                        onClick={reloadFolder}
+                        disabled={processingStatus.status === "processing"}
+                      >
+                        Reload
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="content-header">
                 <div className="content-title">Selected Files</div>
                 <div className="content-actions">

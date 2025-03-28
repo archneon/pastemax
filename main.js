@@ -26,14 +26,14 @@ try {
  */
 function normalizePath(filePath) {
   if (!filePath) return filePath;
-  return filePath.replace(/\\/g, '/');
+  return filePath.replace(/\\/g, "/");
 }
 
 /**
  * Get the platform-specific path separator
  */
 function getPathSeparator() {
-  return os.platform() === 'win32' ? '\\' : '/';
+  return os.platform() === "win32" ? "\\" : "/";
 }
 
 // Initialize tokenizer with better error handling
@@ -168,7 +168,7 @@ function createWindow() {
     "did-fail-load",
     (event, errorCode, errorDescription, validatedURL) => {
       console.error(
-        `Failed to load the application: ${errorDescription} (${errorCode})`,
+        `Failed to load the application: ${errorDescription} (${errorCode})`
       );
       console.error(`Attempted to load URL: ${validatedURL}`);
 
@@ -185,7 +185,7 @@ function createWindow() {
         const indexUrl = `file://${indexPath}`;
         mainWindow.loadURL(indexUrl);
       }
-    },
+    }
   );
 }
 
@@ -284,10 +284,46 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
     dirents.forEach((dirent) => {
       const fullPath = path.join(dir, dirent.name);
       const relativePath = path.relative(rootDir, fullPath);
+      const relativePathNormalized = relativePath.replace(/\\/g, "/"); // Normalize for consistent pattern matching
 
-      // Skip if the path is ignored
-      if (ignoreFilter.ignores(relativePath)) {
+      // Skip if the path is ignored by gitignore
+      if (ignoreFilter.ignores(relativePathNormalized)) {
         return;
+      }
+
+      // Check against all excluded patterns with proper glob pattern handling
+      for (const pattern of excludedFiles) {
+        // Handle directory/** patterns (directory and all subdirectories)
+        if (pattern.endsWith("/**")) {
+          const dirPattern = pattern.slice(0, -3); // Remove the /** part
+          if (
+            relativePathNormalized === dirPattern ||
+            relativePathNormalized.startsWith(dirPattern + "/")
+          ) {
+            return;
+          }
+        }
+        // Handle directory/* patterns (only direct children of directory)
+        else if (pattern.endsWith("/*")) {
+          const dirPattern = pattern.slice(0, -2); // Remove the /* part
+          if (
+            relativePathNormalized.startsWith(dirPattern + "/") &&
+            !relativePathNormalized.slice(dirPattern.length + 1).includes("/")
+          ) {
+            return;
+          }
+        }
+        // Handle *.extension patterns
+        else if (pattern.startsWith("*.")) {
+          const extension = pattern.slice(1); // Remove the * part
+          if (relativePathNormalized.endsWith(extension)) {
+            return;
+          }
+        }
+        // Handle exact matches
+        else if (pattern === relativePathNormalized) {
+          return;
+        }
       }
 
       if (dirent.isDirectory()) {
@@ -297,13 +333,11 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
       }
     });
 
-    // Process directories first
+    // Process directories recursively
     directories.forEach((dirent) => {
       const fullPath = path.join(dir, dirent.name);
-      // Recursively read subdirectory
-      results = results.concat(
-        readFilesRecursively(fullPath, rootDir, ignoreFilter),
-      );
+      const subResults = readFilesRecursively(fullPath, rootDir, ignoreFilter);
+      results = results.concat(subResults);
     });
 
     // Then process files
@@ -410,7 +444,7 @@ ipcMain.on("request-file-list", (event, folderPath) => {
       const serializableFiles = files.map((file) => {
         // Normalize the path to use forward slashes consistently
         const normalizedPath = normalizePath(file.path);
-        
+
         // Create a clean file object
         return {
           name: file.name ? String(file.name) : "",
@@ -426,7 +460,10 @@ ipcMain.on("request-file-list", (event, folderPath) => {
           isSkipped: Boolean(file.isSkipped),
           error: file.error ? String(file.error) : null,
           fileType: file.fileType ? String(file.fileType) : null,
-          excludedByDefault: shouldExcludeByDefault(normalizedPath, normalizePath(folderPath)), // Also normalize here
+          excludedByDefault: shouldExcludeByDefault(
+            normalizedPath,
+            normalizePath(folderPath)
+          ), // Also normalize here
         };
       });
 
@@ -435,11 +472,11 @@ ipcMain.on("request-file-list", (event, folderPath) => {
         // Log a sample of paths to check normalization
         if (serializableFiles.length > 0) {
           console.log("Sample file paths (first 3):");
-          serializableFiles.slice(0, 3).forEach(file => {
+          serializableFiles.slice(0, 3).forEach((file) => {
             console.log(`- ${file.path}`);
           });
         }
-        
+
         event.sender.send("file-list-data", serializableFiles);
       } catch (sendErr) {
         console.error("Error sending file data:", sendErr);

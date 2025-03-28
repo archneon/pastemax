@@ -17,6 +17,12 @@ module.exports = {
     ".nvmrc",
     "node_modules/**",
 
+    // Paraglide JS related
+    "cache/**",
+    "project.inlang/cache/**",
+    // "cache/",
+    // "project.inlang/cache/",
+
     // JavaScript/TypeScript related
     ".eslintrc*",
     ".prettierrc*",

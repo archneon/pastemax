@@ -155,15 +155,21 @@ const Sidebar = ({
                   if (a.type === "directory" && b.type === "file") return -1;
                   if (a.type === "file" && b.type === "directory") return 1;
 
-                  // Sort files by token count (largest first)
-                  if (a.type === "file" && b.type === "file") {
-                    const aTokens = a.fileData?.tokenCount || 0;
-                    const bTokens = b.fileData?.tokenCount || 0;
-                    return bTokens - aTokens;
+                  // If both are directories or both are files, sort by name
+                  if (a.type === b.type) {
+                    // Check if either name starts with a dot (hidden file/directory)
+                    const aIsHidden = a.name.startsWith(".");
+                    const bIsHidden = b.name.startsWith(".");
+
+                    // Hidden files/directories come first
+                    if (aIsHidden && !bIsHidden) return -1;
+                    if (!aIsHidden && bIsHidden) return 1;
+
+                    // If both are hidden or both are not hidden, sort alphabetically
+                    return a.name.localeCompare(b.name);
                   }
 
-                  // Default to alphabetical
-                  return a.name.localeCompare(b.name);
+                  return 0; // This should never happen as we've handled all cases above
                 }),
                 isExpanded,
               };
@@ -179,14 +185,21 @@ const Sidebar = ({
           if (a.type === "directory" && b.type === "file") return -1;
           if (a.type === "file" && b.type === "directory") return 1;
 
-          // Sort files by token count (largest first)
-          if (a.type === "file" && b.type === "file") {
-            const aTokens = a.fileData?.tokenCount || 0;
-            const bTokens = b.fileData?.tokenCount || 0;
-            return bTokens - aTokens;
+          // If both are directories or both are files, sort by name
+          if (a.type === b.type) {
+            // Check if either name starts with a dot (hidden file/directory)
+            const aIsHidden = a.name.startsWith(".");
+            const bIsHidden = b.name.startsWith(".");
+
+            // Hidden files/directories come first
+            if (aIsHidden && !bIsHidden) return -1;
+            if (!aIsHidden && bIsHidden) return 1;
+
+            // If both are hidden or both are not hidden, sort alphabetically
+            return a.name.localeCompare(b.name);
           }
 
-          return a.name.localeCompare(b.name);
+          return 0; // This should never happen as we've handled all cases above
         });
 
         setFileTree(sortedTree);
