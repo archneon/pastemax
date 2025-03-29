@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import FileList from "./components/FileList";
 import CopyButton from "./components/CopyButton";
+import FileTreeToggle from "./components/FileTreeToggle";
 import { FileData } from "./types/FileTypes";
 import { ThemeProvider } from "./context/ThemeContext";
 import ThemeToggle from "./components/ThemeToggle";
@@ -662,40 +663,16 @@ const App = () => {
               />
 
               <div className="copy-button-container">
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "12px",
-                    width: "100%",
-                    maxWidth: "400px",
-                  }}
+                <FileTreeToggle
+                  checked={includeFileTree}
+                  onChange={() => setIncludeFileTree(!includeFileTree)}
+                />
+                <CopyButton
+                  text={getSelectedFilesContent()}
+                  className="primary full-width copy-files-btn"
                 >
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={includeFileTree}
-                      onChange={() => setIncludeFileTree(!includeFileTree)}
-                    />
-                    <span>Include File Tree</span>
-                  </label>
-                  <CopyButton
-                    text={getSelectedFilesContent()}
-                    className="primary full-width"
-                  >
-                    <span>
-                      COPY ALL SELECTED ({selectedFiles.length} files)
-                    </span>
-                  </CopyButton>
-                </div>
+                  <span>COPY ({selectedFiles.length} files)</span>
+                </CopyButton>
               </div>
             </div>
           </div>

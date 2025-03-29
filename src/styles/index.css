@@ -70,7 +70,7 @@ button {
   font-family: inherit;
   border: 1px solid var(--border-color);
   background-color: var(--background-primary);
-  font-size: 14px;
+  font-size: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -148,8 +148,8 @@ input[type="search"]:focus {
   background-color: var(--background-primary);
 }
 
-.header h1 {
-  font-size: 20px;
+.content-header h1 {
+  font-size: 18px;
   font-weight: 600;
   margin: 0;
   color: var(--text-primary);
@@ -158,11 +158,15 @@ input[type="search"]:focus {
 .folder-info {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 8px;
 }
 
 .selected-folder {
-  padding: 6px 12px;
+  font-size: 13px;
+  padding: 0px 12px;
+  height: 32px;
+  display: flex;
+  align-items: center;
   border-radius: 4px;
   background-color: var(--hover-color);
   max-width: 300px;
@@ -176,7 +180,8 @@ input[type="search"]:focus {
   background-color: var(--background-primary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
-  padding: 8px 16px;
+  padding: 0px 16px;
+  height: 32px;
   font-weight: 500;
 }
 
@@ -248,7 +253,9 @@ input[type="search"]:focus {
 .sidebar-action-btn {
   flex: 1;
   font-size: 13px;
-  padding: 6px 12px;
+  /* padding: 6px 12px; */
+  padding: 0px 12px;
+  height: 32px;
   background-color: var(--background-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
@@ -396,13 +403,14 @@ input[type="search"]:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  /* padding: 16px 24px; */
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-color);
   background-color: var(--background-primary);
 }
 
 .content-title {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -421,7 +429,8 @@ input[type="search"]:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13px;
+  height: 32px;
   color: var(--text-primary);
 }
 
@@ -455,7 +464,7 @@ input[type="search"]:focus {
 }
 
 .file-stats {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -597,6 +606,8 @@ input[type="search"]:focus {
   justify-content: center;
   align-items: center;
   background-color: var(--background-primary);
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .copy-button {
@@ -625,7 +636,8 @@ input[type="search"]:focus {
 }
 
 .copy-button.full-width {
-  width: 100%;
+  flex: 1;
+  min-width: 250px;
   max-width: 400px;
 }
 
@@ -742,18 +754,19 @@ input[type="search"]:focus {
   justify-content: center;
   pointer-events: none;
   z-index: 2;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 .search-bar .search-input,
 input[type="search"].search-input,
 input[type="text"].search-input {
   width: 100%;
-  padding: 8px 32px 8px 36px !important;
+  height: 30px;
+  padding: 0px 32px !important;
   border: none;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   background-color: transparent;
   color: var(--text-primary);
@@ -802,16 +815,6 @@ input[type="text"].search-input:focus {
 .sidebar-resize-handle:active {
   opacity: 1;
   background-color: rgba(0, 0, 0, 0.1);
-}
-
-.selected-folder {
-  font-size: 14px;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 500px;
-  display: inline-block;
 }
 
 /* macOS-style segmented control for theme toggle */
@@ -876,4 +879,31 @@ input[type="text"].search-input:focus {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.file-tree-toggle {
+  background-color: var(--background-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0px 16px;
+  height: 32px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-tree-toggle:hover {
+  background-color: var(--hover-color);
+}
+
+.file-tree-toggle-input {
+  margin: 0;
+}
+
+.copy-files-btn {
+  font-size: 13px;
+  padding: 0px 16px;
+  height: 32px;
+  font-weight: 500;
 }
