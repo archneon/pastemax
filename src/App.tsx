@@ -660,6 +660,7 @@ const App = () => {
                 files={displayedFiles}
                 selectedFiles={selectedFiles}
                 toggleFileSelection={toggleFileSelection}
+                selectedFolder={selectedFolder}
               />
 
               <div className="copy-button-container">

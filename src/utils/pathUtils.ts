@@ -5,41 +5,41 @@
 /**
  * Normalizes a file path to use forward slashes regardless of operating system
  * This helps with path comparison across different platforms
- * 
+ *
  * @param filePath The file path to normalize
  * @returns The normalized path with forward slashes
  */
 export function normalizePath(filePath: string): string {
   if (!filePath) return filePath;
-  
+
   // Replace backslashes with forward slashes
-  return filePath.replace(/\\/g, '/');
+  return filePath.replace(/\\/g, "/");
 }
 
 /**
  * Detects the operating system
- * 
+ *
  * @returns The detected operating system ('windows', 'mac', 'linux', or 'unknown')
  */
-export function detectOS(): 'windows' | 'mac' | 'linux' | 'unknown' {
-  if (typeof window !== 'undefined' && window.navigator) {
+export function detectOS(): "windows" | "mac" | "linux" | "unknown" {
+  if (typeof window !== "undefined" && window.navigator) {
     const platform = window.navigator.platform.toLowerCase();
-    
-    if (platform.includes('win')) {
-      return 'windows';
-    } else if (platform.includes('mac')) {
-      return 'mac';
-    } else if (platform.includes('linux')) {
-      return 'linux';
+
+    if (platform.includes("win")) {
+      return "windows";
+    } else if (platform.includes("mac")) {
+      return "mac";
+    } else if (platform.includes("linux")) {
+      return "linux";
     }
   }
-  
-  return 'unknown';
+
+  return "unknown";
 }
 
 /**
  * Compares two paths for equality, handling different OS path separators
- * 
+ *
  * @param path1 First path to compare
  * @param path2 Second path to compare
  * @returns True if the paths are equivalent, false otherwise
@@ -124,60 +124,74 @@ export function extname(path: string | null | undefined): string {
  * @param rootPath The root directory path
  * @returns ASCII string representing the file tree
  */
-export function generateAsciiFileTree(files: { path: string }[], rootPath: string): string {
+export function generateAsciiFileTree(
+  files: { path: string }[],
+  rootPath: string
+): string {
   if (!files.length) return "No files selected.";
 
   // Normalize the root path for consistent path handling
   const normalizedRoot = rootPath.replace(/\\/g, "/").replace(/\/$/, "");
-  
+
   // Create a tree structure from the file paths
   interface TreeNode {
     name: string;
     isFile: boolean;
     children: Record<string, TreeNode>;
   }
-  
-  const root: TreeNode = { name: basename(normalizedRoot), isFile: false, children: {} };
-  
+
+  const root: TreeNode = {
+    name: basename(normalizedRoot),
+    isFile: false,
+    children: {},
+  };
+
   // Insert a file path into the tree
   const insertPath = (filePath: string, node: TreeNode) => {
     const normalizedPath = filePath.replace(/\\/g, "/");
     if (!normalizedPath.startsWith(normalizedRoot)) return;
-    
-    const relativePath = normalizedPath.substring(normalizedRoot.length).replace(/^\//, "");
+
+    const relativePath = normalizedPath
+      .substring(normalizedRoot.length)
+      .replace(/^\//, "");
     if (!relativePath) return;
-    
+
     const pathParts = relativePath.split("/");
     let currentNode = node;
-    
+
     for (let i = 0; i < pathParts.length; i++) {
       const part = pathParts[i];
       const isFile = i === pathParts.length - 1;
-      
+
       if (!currentNode.children[part]) {
         currentNode.children[part] = {
           name: part,
           isFile,
-          children: {}
+          children: {},
         };
       }
-      
+
       currentNode = currentNode.children[part];
     }
   };
-  
+
   // Insert all files into the tree
-  files.forEach(file => insertPath(file.path, root));
-  
+  files.forEach((file) => insertPath(file.path, root));
+
   // Generate ASCII representation
-  const generateAscii = (node: TreeNode, prefix = "", isLast = true, isRoot = true): string => {
+  const generateAscii = (
+    node: TreeNode,
+    prefix = "",
+    isLast = true,
+    isRoot = true
+  ): string => {
     if (!isRoot) {
       let result = prefix;
       result += isLast ? "└── " : "├── ";
       result += node.name;
       result += "\n";
       prefix += isLast ? "    " : "│   ";
-      
+
       const children = Object.values(node.children).sort((a, b) => {
         // Sort by type (directories first) then by name
         if (a.isFile !== b.isFile) {
@@ -185,12 +199,15 @@ export function generateAsciiFileTree(files: { path: string }[], rootPath: strin
         }
         return a.name.localeCompare(b.name);
       });
-      
-      return result + children
-        .map((child, index) =>
-          generateAscii(child, prefix, index === children.length - 1, false)
-        )
-        .join("");
+
+      return (
+        result +
+        children
+          .map((child, index) =>
+            generateAscii(child, prefix, index === children.length - 1, false)
+          )
+          .join("")
+      );
     } else {
       // Root node special handling
       const children = Object.values(node.children).sort((a, b) => {
@@ -200,7 +217,7 @@ export function generateAsciiFileTree(files: { path: string }[], rootPath: strin
         }
         return a.name.localeCompare(b.name);
       });
-      
+
       return children
         .map((child, index) =>
           generateAscii(child, prefix, index === children.length - 1, false)
@@ -208,6 +225,31 @@ export function generateAsciiFileTree(files: { path: string }[], rootPath: strin
         .join("");
     }
   };
-  
+
   return generateAscii(root);
+}
+
+/**
+ * Calculates the relative path from a root directory to a file path
+ * @param filePath The absolute file path
+ * @param rootPath The root directory path
+ * @returns The relative path from rootPath to filePath
+ */
+export function getRelativePath(
+  filePath: string,
+  rootPath: string | null
+): string {
+  if (!rootPath || !filePath) return filePath;
+
+  // Normalize paths for consistent handling
+  const normalizedFilePath = normalizePath(filePath);
+  const normalizedRootPath = normalizePath(rootPath).replace(/\/$/, "");
+
+  // Check if filePath starts with rootPath
+  if (normalizedFilePath.startsWith(normalizedRootPath)) {
+    return normalizedFilePath.substring(normalizedRootPath.length + 1); // +1 for the slash
+  }
+
+  // Return original path if not within the root path
+  return filePath;
 }

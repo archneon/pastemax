@@ -43,6 +43,7 @@ export interface FileListProps {
   files: FileData[];
   selectedFiles: string[];
   toggleFileSelection: (filePath: string) => void;
+  selectedFolder: string | null;
 }
 
 export interface FileCardProps {

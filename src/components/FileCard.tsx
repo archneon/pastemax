@@ -2,6 +2,7 @@ import React from "react";
 import { FileCardProps } from "../types/FileTypes";
 import { Plus, X, FileText } from "lucide-react";
 import CopyButton from "./CopyButton";
+import { getRelativePath } from "../utils/pathUtils";
 
 interface FileCardComponentProps {
   file: {
@@ -12,17 +13,22 @@ interface FileCardComponentProps {
   };
   isSelected: boolean;
   toggleSelection: (path: string) => void;
+  selectedFolder: string | null;
 }
 
 const FileCard = ({
   file,
   isSelected,
   toggleSelection,
+  selectedFolder,
 }: FileCardComponentProps) => {
   const { name, path: filePath, tokenCount } = file;
 
   // Format token count for display
   const formattedTokens = tokenCount.toLocaleString();
+
+  // Get relative path using the utility function
+  const relativePath = getRelativePath(filePath, selectedFolder);
 
   return (
     <div className={`file-card ${isSelected ? "selected" : ""}`}>
@@ -31,6 +37,11 @@ const FileCard = ({
           <FileText size={16} />
         </div>
         <div className="file-card-name monospace">{name}</div>
+      </div>
+      <div className="file-card-info">
+        <div className="file-card-path" title={relativePath}>
+          {relativePath}
+        </div>
       </div>
       <div className="file-card-info">
         <div className="file-card-tokens">~{formattedTokens} tokens</div>
