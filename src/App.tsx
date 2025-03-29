@@ -10,6 +10,7 @@ import {
   generateAsciiFileTree,
   normalizePath,
   arePathsEqual,
+  comparePaths,
 } from "./utils/pathUtils";
 
 // Access the electron API from the window object
@@ -51,7 +52,7 @@ const App = () => {
   const [selectedFiles, setSelectedFiles] = useState(
     savedFiles ? JSON.parse(savedFiles) : ([] as string[])
   );
-  const [sortOrder, setSortOrder] = useState(savedSortOrder || "tokens-desc");
+  const [sortOrder, setSortOrder] = useState(savedSortOrder || "path-asc");
   const [searchTerm, setSearchTerm] = useState(savedSearchTerm || "");
   const [expandedNodes, setExpandedNodes] = useState(
     {} as Record<string, boolean>
@@ -245,6 +246,8 @@ const App = () => {
         comparison = a.tokenCount - b.tokenCount;
       } else if (sortKey === "size") {
         comparison = a.size - b.size;
+      } else if (sortKey === "path") {
+        comparison = comparePaths(a.path, b.path);
       }
 
       return sortDir === "asc" ? comparison : -comparison;
@@ -445,6 +448,8 @@ const App = () => {
           comparison = a.tokenCount - b.tokenCount;
         } else if (sortKey === "size") {
           comparison = a.size - b.size;
+        } else if (sortKey === "path") {
+          comparison = comparePaths(a.path, b.path);
         }
 
         return sortDir === "asc" ? comparison : -comparison;
@@ -503,6 +508,8 @@ const App = () => {
 
   // Sort options for the dropdown
   const sortOptions = [
+    { value: "path-asc", label: "Structure: A-Z" },
+    { value: "path-desc", label: "Structure: Z-A" },
     { value: "tokens-desc", label: "Tokens: High to Low" },
     { value: "tokens-asc", label: "Tokens: Low to High" },
     { value: "name-asc", label: "Name: A to Z" },

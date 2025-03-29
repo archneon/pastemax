@@ -397,6 +397,9 @@ input[type="search"]:focus {
   overflow: hidden;
   background-color: var(--background-primary);
   min-width: 0;
+  position: relative;
+  transform: translateZ(0);
+  isolation: isolate;
 }
 
 .content-header {
@@ -408,6 +411,15 @@ input[type="search"]:focus {
   border-bottom: 1px solid var(--border-color);
   background-color: var(--background-primary);
 }
+
+/* .content-header-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--background-primary);
+} */
 
 .content-title {
   font-size: 14px;
@@ -531,6 +543,7 @@ input[type="search"]:focus {
   margin-right: 8px;
   color: var(--icon-color);
   flex-shrink: 0;
+  line-height: 1.2;
 }
 
 .file-card-name {

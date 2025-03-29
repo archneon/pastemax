@@ -253,3 +253,18 @@ export function getRelativePath(
   // Return original path if not within the root path
   return filePath;
 }
+
+/**
+ * Compares two file paths based on directory structure and filename.
+ * Uses localeCompare for natural sorting within directories.
+ * @param pathA First path
+ * @param pathB Second path
+ * @returns -1 if pathA < pathB, 0 if equal, 1 if pathA > pathB
+ */
+export function comparePaths(pathA: string, pathB: string): number {
+  // Normalize paths before comparison for robustness
+  const normalizedA = normalizePath(pathA);
+  const normalizedB = normalizePath(pathB);
+
+  return normalizedA.localeCompare(normalizedB);
+}

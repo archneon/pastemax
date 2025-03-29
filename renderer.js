@@ -5,7 +5,7 @@
 let selectedFiles = [];
 let allFiles = []; // Store all file data
 let displayedFiles = []; // Files after filtering and sorting
-let currentSort = "name-asc"; // Default sort
+let currentSort = "path-asc"; // Default sort
 let currentFilter = ""; // Current filter text
 
 const openFolderButton = document.getElementById("open-folder-button");
@@ -25,7 +25,7 @@ openFolderButton.addEventListener("click", () => {
 window.electron.receive("folder-selected", (selectedPath) => {
   // Store or display the selected path
   const selectedFolderDisplay = document.getElementById(
-    "selected-folder-display",
+    "selected-folder-display"
   );
   selectedFolderDisplay.textContent = `Selected Folder: ${selectedPath}`;
 
@@ -49,6 +49,20 @@ window.electron.receive("file-list-data", (files) => {
   applyFiltersAndSort();
 });
 
+// Normalize path - helper function
+function normalizePath(filePath) {
+  if (!filePath) return filePath;
+  // Replace backslashes with forward slashes
+  return filePath.replace(/\\/g, "/");
+}
+
+// Comparator for paths
+function comparePaths(pathA, pathB) {
+  const normalizedA = normalizePath(pathA);
+  const normalizedB = normalizePath(pathB);
+  return normalizedA.localeCompare(normalizedB);
+}
+
 // Sort the files based on the selected sort option
 function sortFiles(files, sortValue) {
   const [sortKey, sortDir] = sortValue.split("-"); // e.g. 'name', 'asc'
@@ -62,6 +76,8 @@ function sortFiles(files, sortValue) {
       comparison = a.tokenCount - b.tokenCount;
     } else if (sortKey === "size") {
       comparison = a.size - b.size;
+    } else if (sortKey === "path") {
+      comparison = comparePaths(a.path, b.path);
     }
 
     return sortDir === "asc" ? comparison : -comparison;
@@ -123,7 +139,7 @@ function calculateTotalTokens() {
 function updateTotalTokens() {
   const totalTokens = calculateTotalTokens();
   document.getElementById(
-    "total-tokens",
+    "total-tokens"
   ).textContent = `Total Tokens: ${totalTokens.toLocaleString()}`;
 }
 
@@ -144,7 +160,7 @@ function handleCheckboxChange(event) {
 // Select All button functionality
 selectAllButton.addEventListener("click", () => {
   const checkboxes = document.querySelectorAll(
-    '#file-list input[type="checkbox"]',
+    '#file-list input[type="checkbox"]'
   );
 
   // Get the paths of all currently displayed files
@@ -169,7 +185,7 @@ selectAllButton.addEventListener("click", () => {
 // Deselect All button functionality
 deselectAllButton.addEventListener("click", () => {
   const checkboxes = document.querySelectorAll(
-    '#file-list input[type="checkbox"]',
+    '#file-list input[type="checkbox"]'
   );
 
   // Get the paths of all currently displayed files
@@ -177,7 +193,7 @@ deselectAllButton.addEventListener("click", () => {
 
   // Remove currently displayed files from selection
   selectedFiles = selectedFiles.filter(
-    (path) => !displayedPaths.includes(path),
+    (path) => !displayedPaths.includes(path)
   );
 
   // Uncheck all displayed checkboxes
@@ -206,7 +222,7 @@ function concatenateSelectedFiles() {
 
   // Filter to only include selected files
   const sortedSelectedFiles = sortedFiles.filter((file) =>
-    selectedFiles.includes(file.path),
+    selectedFiles.includes(file.path)
   );
 
   if (sortedSelectedFiles.length === 0) {

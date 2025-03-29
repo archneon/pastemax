@@ -20,8 +20,6 @@ module.exports = {
     // Paraglide JS related
     "cache/**",
     "project.inlang/cache/**",
-    // "cache/",
-    // "project.inlang/cache/",
 
     // JavaScript/TypeScript related
     ".eslintrc*",

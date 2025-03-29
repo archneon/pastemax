@@ -1,0 +1,53 @@
+{
+  "tag_suffixes": {
+    "open": "_START",
+    "close": "_END"
+  },
+  "delimiters": {
+    "section": {
+      "marker": "%%%%",
+      "tag_prefix": "SECTION_"
+    },
+    "description": {
+      "marker": "++++",
+      "tag_prefix": "DESCRIPTION"
+    },
+    "file": {
+      "marker": "::::",
+      "tag_prefix": "FILE"
+      // "path_delimiter": ": "
+    }
+  },
+  "sections": [
+    {
+      "id": "PROJECT_TREE",
+      "description": "High-level overview of the project folder and file structure."
+    },
+    {
+      "id": "RULES",
+      "directory": "ai/rules",
+      "sort_order": 1,
+      "enabled": true,
+      "description": "Defines AI behavior, role, constraints, and operating logic."
+    },
+    {
+      "id": "DOCUMENTATION",
+      "directory": "ai/docs",
+      "sort_order": 2,
+      "enabled": true,
+      "description": "Latest documentation that overrides or complements model knowledge."
+    },
+    {
+      "id": "SOURCE_CODE",
+      "sort_order": 3,
+      "description": ""
+    },
+    {
+      "id": "PROMPTS",
+      "directory": "ai/prompts",
+      "sort_order": 4,
+      "enabled": true,
+      "description": "Specific task instructions, requests, and custom prompts."
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import { Sun, Moon, Monitor } from "lucide-react";
 
 const ThemeToggle = (): JSX.Element => {
   const { theme, setTheme } = useTheme();
-  
+
   return (
     <div className="theme-segmented-control">
       <button
@@ -13,7 +13,7 @@ const ThemeToggle = (): JSX.Element => {
         title="Light Mode"
       >
         <Sun size={16} />
-        <span>Light</span>
+        {/* <span>Light</span> */}
       </button>
       <button
         className={`theme-segment ${theme === "dark" ? "active" : ""}`}
@@ -21,7 +21,7 @@ const ThemeToggle = (): JSX.Element => {
         title="Dark Mode"
       >
         <Moon size={16} />
-        <span>Dark</span>
+        {/* <span>Dark</span> */}
       </button>
       <button
         className={`theme-segment ${theme === "system" ? "active" : ""}`}
@@ -29,10 +29,10 @@ const ThemeToggle = (): JSX.Element => {
         title="Use System Settings"
       >
         <Monitor size={16} />
-        <span>Auto</span>
+        {/* <span>Auto</span> */}
       </button>
     </div>
   );
 };
 
-export default ThemeToggle; 
+export default ThemeToggle;
