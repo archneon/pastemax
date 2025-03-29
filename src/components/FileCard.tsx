@@ -39,12 +39,15 @@ const FileCard = ({
         <div className="file-card-name monospace">{name}</div>
       </div>
       <div className="file-card-info">
-        <div className="file-card-path" title={relativePath}>
-          {relativePath}
+        <div className="file-card-path">
+          <span title={relativePath}>{relativePath}</span>
         </div>
       </div>
       <div className="file-card-info">
-        <div className="file-card-tokens">~{formattedTokens} tokens</div>
+        <div className="file-card-tokens">
+          <span className="tokens-count">~{formattedTokens} tokens</span>
+          <span className="file-type">type</span>
+        </div>
       </div>
 
       <div className="file-card-actions">
