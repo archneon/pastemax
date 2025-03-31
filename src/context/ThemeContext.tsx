@@ -1,15 +1,13 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
+import { LOCAL_STORAGE_KEYS, THEME_OPTIONS, ThemeValue } from "../constants";
 
-type ThemeType = "light" | "dark" | "system";
+type ThemeType = ThemeValue;
 
 interface ThemeContextType {
   theme: ThemeType;
   currentTheme: "light" | "dark"; // The actual applied theme
   setTheme: (theme: ThemeType) => void;
 }
-
-// Konstanta za ključ shranjevanja teme v localStorage
-const THEME_STORAGE_KEY = "pastemax-theme";
 
 // Create context with proper typing
 const defaultThemeContext: ThemeContextType = {
@@ -27,18 +25,23 @@ export const ThemeProvider = ({
 }: ThemeProviderProps): JSX.Element => {
   // Initialize theme from localStorage or default to "system"
   const [theme, setThemeState] = useState(() => {
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeType;
-    return savedTheme && ["light", "dark", "system"].includes(savedTheme)
+    const savedTheme = localStorage.getItem(
+      LOCAL_STORAGE_KEYS.THEME
+    ) as ThemeType;
+    return savedTheme &&
+      [THEME_OPTIONS.LIGHT, THEME_OPTIONS.DARK, THEME_OPTIONS.SYSTEM].includes(
+        savedTheme as any
+      )
       ? savedTheme
-      : "system";
+      : THEME_OPTIONS.SYSTEM;
   });
 
-  const [currentTheme, setCurrentTheme] = useState("light");
+  const [currentTheme, setCurrentTheme] = useState(THEME_OPTIONS.LIGHT);
 
   // Function to set theme and save to localStorage
   const setTheme = (newTheme: ThemeType) => {
     setThemeState(newTheme);
-    localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.THEME, newTheme);
   };
 
   // Effect to apply the correct theme based on selection or system preference
@@ -46,7 +49,7 @@ export const ThemeProvider = ({
     const applyTheme = (themeName: "light" | "dark") => {
       setCurrentTheme(themeName);
 
-      if (themeName === "dark") {
+      if (themeName === THEME_OPTIONS.DARK) {
         document.body.classList.add("dark-mode");
       } else {
         document.body.classList.remove("dark-mode");
@@ -59,8 +62,8 @@ export const ThemeProvider = ({
     ).matches;
 
     // Apply theme based on selection or system preference
-    if (theme === "system") {
-      applyTheme(prefersDark ? "dark" : "light");
+    if (theme === THEME_OPTIONS.SYSTEM) {
+      applyTheme(prefersDark ? THEME_OPTIONS.DARK : THEME_OPTIONS.LIGHT);
     } else {
       applyTheme(theme as "light" | "dark");
     }
@@ -69,8 +72,8 @@ export const ThemeProvider = ({
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
     const handleSystemThemeChange = (e: MediaQueryListEvent) => {
-      if (theme === "system") {
-        applyTheme(e.matches ? "dark" : "light");
+      if (theme === THEME_OPTIONS.SYSTEM) {
+        applyTheme(e.matches ? THEME_OPTIONS.DARK : THEME_OPTIONS.LIGHT);
       }
     };
 

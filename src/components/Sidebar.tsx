@@ -143,10 +143,8 @@ const Sidebar = ({
               return item as TreeNode;
             } else {
               const children = convertToTreeNodes(item.children, level + 1);
-              const isExpanded =
-                expandedNodes[item.id] !== undefined
-                  ? expandedNodes[item.id]
-                  : true; // Default to expanded if not in state
+              // Check if the directory's path exists in the expandedNodes Set
+              const isExpanded = expandedNodes.has(item.path);
 
               return {
                 ...item,
@@ -224,10 +222,8 @@ const Sidebar = ({
     const applyExpandedState = (nodes: TreeNode[]): TreeNode[] => {
       return nodes.map((node: TreeNode): TreeNode => {
         if (node.type === "directory") {
-          const isExpanded =
-            expandedNodes[node.id] !== undefined
-              ? expandedNodes[node.id]
-              : true; // Default to expanded if not in state
+          // Check if the directory's path exists in the expandedNodes Set
+          const isExpanded = expandedNodes.has(node.path);
 
           return {
             ...node,

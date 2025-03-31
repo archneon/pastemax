@@ -44,6 +44,7 @@ import {
   FolderUp,
   FolderDown,
 } from "lucide-react";
+import { MAX_RECENT_FOLDERS } from "./constants";
 
 console.log("--- App.tsx component function starting ---");
 
@@ -62,9 +63,6 @@ declare global {
     };
   }
 }
-
-// Maximum number of recent folders to store
-const MAX_RECENT_FOLDERS = 10;
 
 const App = () => {
   // Določimo tip za lastSelectedFolder
@@ -85,7 +83,7 @@ const App = () => {
     initialState.fileListView as "structured" | "flat"
   );
   const [expandedNodes, setExpandedNodes] = useState(
-    initialState.expandedNodes as Record<string, boolean>
+    initialState.expandedNodes
   );
   const [displayedFiles, setDisplayedFiles] = useState([] as FileData[]);
 
@@ -271,7 +269,11 @@ const App = () => {
       }
     };
 
-    const handleFileListData = (files: FileData[]) => {
+    const handleFileListData = (
+      data: FileData[] | { files: FileData[]; totalTokenCount: number }
+    ) => {
+      // Podprimo obe strukturi - array ali objekt s files poljem
+      const files = Array.isArray(data) ? data : data.files;
       console.log("Received file list data:", files.length, "files");
       setAllFiles(files);
       setProcessingStatus({
@@ -417,7 +419,12 @@ const App = () => {
     const selectionToPreserve = [...selectedFiles];
 
     // Definiramo listener za trenutno osvežitev/ponovno nalaganje
-    const handleDataForRefresh = (refreshedFiles: FileData[]) => {
+    const handleDataForRefresh = (
+      data: FileData[] | { files: FileData[]; totalTokenCount: number }
+    ) => {
+      // Podprimo obe strukturi - array ali objekt s files poljem
+      const refreshedFiles = Array.isArray(data) ? data : data.files;
+
       console.log(
         `Received data for ${action}: ${refreshedFiles.length} files`
       );
@@ -601,17 +608,15 @@ const App = () => {
   ];
 
   // Handle expand/collapse state changes
-  const toggleExpanded = (nodeId: string) => {
-    setExpandedNodes((prev: Record<string, boolean>) => {
-      const newState = {
-        ...prev,
-        [nodeId]: prev[nodeId] === undefined ? false : !prev[nodeId],
-      };
-
-      // Posodobimo stanje v localStorage preko storageUtils
-      updateProjectProperty(selectedFolder, "expandedNodes", newState);
-
-      return newState;
+  const toggleExpanded = (nodePath: string) => {
+    setExpandedNodes((prevSet: Set<string>) => {
+      const newSet = new Set(prevSet); // Create a new Set to ensure state update
+      if (newSet.has(nodePath)) {
+        newSet.delete(nodePath); // Remove if exists (collapse)
+      } else {
+        newSet.add(nodePath); // Add if doesn't exist (expand)
+      }
+      return newSet;
     });
   };
 

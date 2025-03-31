@@ -35,8 +35,8 @@ export interface SidebarProps {
   deselectAllFiles: () => void;
   refreshFolder: () => void;
   reloadFolder: () => void;
-  expandedNodes: Record<string, boolean>;
-  toggleExpanded: (nodeId: string) => void;
+  expandedNodes: Set<string>;
+  toggleExpanded: (path: string) => void;
 }
 
 export interface FileListProps {
@@ -57,7 +57,7 @@ export interface TreeItemProps {
   selectedFiles: string[];
   toggleFileSelection: (filePath: string) => void;
   toggleFolderSelection: (folderPath: string, isSelected: boolean) => void;
-  toggleExpanded: (nodeId: string) => void;
+  toggleExpanded: (path: string) => void;
 }
 
 export interface SortOption {

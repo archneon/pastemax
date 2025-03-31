@@ -1,4 +1,11 @@
 import { normalizePath } from "./pathUtils";
+import {
+  LOCAL_STORAGE_KEYS,
+  DEFAULT_SORT_ORDER,
+  DEFAULT_FILE_LIST_VIEW,
+  DEFAULT_INCLUDE_FILE_TREE,
+  FileListViewValue,
+} from "../constants";
 
 /**
  * Glavni ključ za shranjevanje vseh projektnih stanj
@@ -20,10 +27,10 @@ const RECENT_FOLDERS_KEY = "pastemax-recent-folders";
  */
 interface ProjectState {
   selectedFiles?: string[];
-  expandedNodes?: Record<string, boolean>;
+  expandedNodes?: string[];
   sortOrder?: string;
   searchTerm?: string;
-  fileListView?: "structured" | "flat";
+  fileListView?: FileListViewValue;
   includeFileTree?: boolean;
   lastAccessed?: number;
 }
@@ -38,18 +45,18 @@ type AllProjectStates = Record<string, ProjectState>;
  */
 const defaultProjectState: ProjectState = {
   selectedFiles: [],
-  expandedNodes: {},
-  sortOrder: "path-asc",
+  expandedNodes: [],
+  sortOrder: DEFAULT_SORT_ORDER,
   searchTerm: "",
-  fileListView: "structured",
-  includeFileTree: false,
+  fileListView: DEFAULT_FILE_LIST_VIEW,
+  includeFileTree: DEFAULT_INCLUDE_FILE_TREE,
 };
 
 /**
  * Vrne pot zadnje izbranega direktorija
  */
 export function getLastSelectedFolder(): string | null {
-  return localStorage.getItem(LAST_SELECTED_FOLDER_KEY);
+  return localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_SELECTED_FOLDER);
 }
 
 /**
@@ -57,9 +64,9 @@ export function getLastSelectedFolder(): string | null {
  */
 export function saveLastSelectedFolder(folderPath: string | null): void {
   if (folderPath) {
-    localStorage.setItem(LAST_SELECTED_FOLDER_KEY, folderPath);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.LAST_SELECTED_FOLDER, folderPath);
   } else {
-    localStorage.removeItem(LAST_SELECTED_FOLDER_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.LAST_SELECTED_FOLDER);
   }
 }
 
@@ -68,7 +75,9 @@ export function saveLastSelectedFolder(folderPath: string | null): void {
  */
 export function loadProjectStates(): AllProjectStates {
   try {
-    const storedStates = localStorage.getItem(PROJECT_STATES_KEY);
+    const storedStates = localStorage.getItem(
+      LOCAL_STORAGE_KEYS.PROJECT_STATES
+    );
     return storedStates ? JSON.parse(storedStates) : {};
   } catch (error) {
     console.error("Napaka pri branju projektnih stanj iz localStorage:", error);
@@ -81,7 +90,10 @@ export function loadProjectStates(): AllProjectStates {
  */
 function saveAllProjectStates(states: AllProjectStates): void {
   try {
-    localStorage.setItem(PROJECT_STATES_KEY, JSON.stringify(states));
+    localStorage.setItem(
+      LOCAL_STORAGE_KEYS.PROJECT_STATES,
+      JSON.stringify(states)
+    );
   } catch (error) {
     console.error(
       "Napaka pri shranjevanju projektnih stanj v localStorage:",
@@ -108,7 +120,7 @@ export function getProjectState(folderPath: string | null): ProjectState {
     ...projectState,
     // Zagotovi, da so polja pravilno inicializirana
     selectedFiles: projectState.selectedFiles ?? [],
-    expandedNodes: projectState.expandedNodes ?? {},
+    expandedNodes: projectState.expandedNodes ?? [],
   };
 }
 
@@ -118,7 +130,7 @@ export function getProjectState(folderPath: string | null): ProjectState {
 export function updateProjectProperty<K extends keyof ProjectState>(
   folderPath: string | null,
   propertyName: K,
-  value: ProjectState[K]
+  value: K extends "expandedNodes" ? Set<string> | string[] : ProjectState[K]
 ): void {
   if (!folderPath) return;
 
@@ -130,8 +142,14 @@ export function updateProjectProperty<K extends keyof ProjectState>(
     allStates[normalized] = { ...defaultProjectState };
   }
 
+  // Convert Set to Array before saving if property is expandedNodes
+  let valueToSave: any = value;
+  if (propertyName === "expandedNodes" && value instanceof Set) {
+    valueToSave = Array.from(value);
+  }
+
   // Posodobi lastnost
-  allStates[normalized][propertyName] = value;
+  allStates[normalized][propertyName] = valueToSave;
   // Posodobi čas zadnjega dostopa
   allStates[normalized].lastAccessed = Date.now();
 
@@ -163,14 +181,17 @@ export function saveProjectState(
 /**
  * Naloži začetno stanje za uporabo v App.tsx
  */
-export function loadInitialState(
-  folderPath: string | null
-): Required<Omit<ProjectState, "lastAccessed">> &
-  Pick<ProjectState, "lastAccessed"> {
+export function loadInitialState(folderPath: string | null): Omit<
+  Required<Omit<ProjectState, "lastAccessed">>,
+  "expandedNodes"
+> & {
+  expandedNodes: Set<string>;
+  lastAccessed?: number;
+} {
   const state = getProjectState(folderPath);
   return {
     selectedFiles: state.selectedFiles!,
-    expandedNodes: state.expandedNodes!,
+    expandedNodes: new Set(state.expandedNodes!), // Convert array to Set
     sortOrder: state.sortOrder!,
     searchTerm: state.searchTerm!,
     fileListView: state.fileListView!,
@@ -184,7 +205,7 @@ export function loadInitialState(
  */
 export function loadRecentFolders(): string[] {
   try {
-    const saved = localStorage.getItem(RECENT_FOLDERS_KEY);
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.RECENT_FOLDERS);
     return saved ? JSON.parse(saved) : [];
   } catch (error) {
     console.error("Napaka pri branju seznama nedavnih map:", error);
@@ -197,7 +218,10 @@ export function loadRecentFolders(): string[] {
  */
 export function saveRecentFolders(folders: string[]): void {
   try {
-    localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(folders));
+    localStorage.setItem(
+      LOCAL_STORAGE_KEYS.RECENT_FOLDERS,
+      JSON.stringify(folders)
+    );
   } catch (error) {
     console.error("Napaka pri shranjevanju seznama nedavnih map:", error);
   }

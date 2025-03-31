@@ -1,6 +1,16 @@
 // Preload script
 const { contextBridge, ipcRenderer } = require("electron");
 
+// Althogh we already have IPC_CHANNELS in constants.js, it is impossible to require
+// constants.js in preload.js, due to special Electron restrictions.
+// Channels must be defined directly here in 'preload.js' either as strings or as constants.
+const IPC_CHANNELS = {
+  OPEN_FOLDER: "open-folder",
+  REQUEST_FILE_LIST: "request-file-list",
+  FOLDER_SELECTED: "folder-selected",
+  FILE_LIST_DATA: "file-list-data",
+  FILE_PROCESSING_STATUS: "file-processing-status",
+};
 // Helper function to ensure data is serializable
 function ensureSerializable(data) {
   if (data === null || data === undefined) {
@@ -37,7 +47,10 @@ function ensureSerializable(data) {
 contextBridge.exposeInMainWorld("electron", {
   send: (channel, data) => {
     // whitelist channels
-    const validChannels = ["open-folder", "request-file-list"];
+    const validChannels = [
+      IPC_CHANNELS.OPEN_FOLDER,
+      IPC_CHANNELS.REQUEST_FILE_LIST,
+    ];
     if (validChannels.includes(channel)) {
       // Ensure data is serializable before sending
       const serializedData = ensureSerializable(data);
@@ -46,9 +59,9 @@ contextBridge.exposeInMainWorld("electron", {
   },
   receive: (channel, func) => {
     const validChannels = [
-      "folder-selected",
-      "file-list-data",
-      "file-processing-status",
+      IPC_CHANNELS.FOLDER_SELECTED,
+      IPC_CHANNELS.FILE_LIST_DATA,
+      IPC_CHANNELS.FILE_PROCESSING_STATUS,
     ];
     if (validChannels.includes(channel)) {
       // Deliberately strip event as it includes `sender`

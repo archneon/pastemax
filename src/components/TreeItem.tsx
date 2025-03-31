@@ -83,12 +83,14 @@ const TreeItem = ({
 
   const handleToggle = (e: MouseEventType<HTMLDivElement>) => {
     e.stopPropagation();
-    toggleExpanded(id);
+    if (type === "directory") {
+      toggleExpanded(path);
+    }
   };
 
   const handleItemClick = (e: MouseEventType<HTMLDivElement>) => {
     if (type === "directory") {
-      toggleExpanded(id);
+      toggleExpanded(path);
     } else if (type === "file" && !isDisabled) {
       toggleFileSelection(path);
     }

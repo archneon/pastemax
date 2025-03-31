@@ -9,6 +9,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { IPC_CHANNELS, MAX_FILE_SIZE } = require("./constants");
 
 // Add handling for the 'ignore' module
 let ignore;
@@ -123,9 +124,6 @@ const BINARY_EXTENSIONS = [
   ".dat",
 ].concat(binaryExtensions || []); // Add any additional binary extensions from excluded-files.js
 
-// Max file size to read (5MB)
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -229,7 +227,7 @@ app.on("window-all-closed", () => {
 });
 
 // Handle folder selection
-ipcMain.on("open-folder", async (event) => {
+ipcMain.on(IPC_CHANNELS.OPEN_FOLDER, async (event) => {
   const result = await dialog.showOpenDialog({
     properties: ["openDirectory"],
   });
@@ -240,11 +238,11 @@ ipcMain.on("open-folder", async (event) => {
       // Ensure we're only sending a string, not an object
       const pathString = String(selectedPath);
       console.log("Sending folder-selected event with path:", pathString);
-      event.sender.send("folder-selected", pathString);
+      event.sender.send(IPC_CHANNELS.FOLDER_SELECTED, pathString);
     } catch (err) {
       console.error("Error sending folder-selected event:", err);
       // Try a more direct approach as a fallback
-      event.sender.send("folder-selected", String(selectedPath));
+      event.sender.send(IPC_CHANNELS.FOLDER_SELECTED, String(selectedPath));
     }
   }
 });
@@ -442,14 +440,14 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
 }
 
 // Handle file list request
-ipcMain.on("request-file-list", (event, folderPath) => {
+ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
   try {
     console.log("Processing file list for folder:", folderPath);
     console.log("OS platform:", os.platform());
     console.log("Path separator:", getPathSeparator());
 
     // Send initial progress update
-    event.sender.send("file-processing-status", {
+    event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
       status: "processing",
       message: "Scanning directory structure...",
     });
@@ -460,7 +458,7 @@ ipcMain.on("request-file-list", (event, folderPath) => {
       console.log(`Found ${files.length} files in ${folderPath}`);
 
       // Update with processing complete status
-      event.sender.send("file-processing-status", {
+      event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
         status: "complete",
         message: `Found ${files.length} files`,
       });
@@ -502,7 +500,13 @@ ipcMain.on("request-file-list", (event, folderPath) => {
           });
         }
 
-        event.sender.send("file-list-data", serializableFiles);
+        event.sender.send(IPC_CHANNELS.FILE_LIST_DATA, {
+          files: serializableFiles,
+          totalTokenCount: serializableFiles.reduce(
+            (total, file) => total + file.tokenCount,
+            0
+          ),
+        });
       } catch (sendErr) {
         console.error("Error sending file data:", sendErr);
 
@@ -517,7 +521,13 @@ ipcMain.on("request-file-list", (event, folderPath) => {
           excludedByDefault: file.excludedByDefault,
         }));
 
-        event.sender.send("file-list-data", minimalFiles);
+        event.sender.send(IPC_CHANNELS.FILE_LIST_DATA, {
+          files: minimalFiles,
+          totalTokenCount: minimalFiles.reduce(
+            (total, file) => total + file.tokenCount,
+            0
+          ),
+        });
       }
     };
 
@@ -525,7 +535,7 @@ ipcMain.on("request-file-list", (event, folderPath) => {
     setTimeout(processFiles, 100);
   } catch (err) {
     console.error("Error processing file list:", err);
-    event.sender.send("file-processing-status", {
+    event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
       status: "error",
       message: `Error: ${err.message}`,
     });
