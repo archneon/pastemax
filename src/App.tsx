@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  MouseEvent,
+  useRef,
+  RefObject,
+} from "react";
 import Sidebar from "./components/Sidebar";
 import FileList from "./components/FileList";
 import CopyButton from "./components/CopyButton";
@@ -6,12 +12,29 @@ import FileTreeToggle from "./components/FileTreeToggle";
 import { FileData } from "./types/FileTypes";
 import { ThemeProvider } from "./context/ThemeContext";
 import ThemeToggle from "./components/ThemeToggle";
+import FileListToggle from "./components/FileListToggle";
 import {
   generateAsciiFileTree,
   normalizePath,
   arePathsEqual,
   comparePaths,
+  basename,
 } from "./utils/pathUtils";
+import {
+  X,
+  FolderOpen,
+  RefreshCw,
+  LogOut,
+  ChartNoAxesColumnIncreasingIcon,
+  ChartNoAxesColumnDecreasingIcon,
+  SortAsc,
+  SortDesc,
+  ArrowUpDown,
+  FolderUp,
+  FolderDown,
+} from "lucide-react";
+
+console.log("--- App.tsx component function starting ---");
 
 // Access the electron API from the window object
 declare global {
@@ -36,14 +59,27 @@ const STORAGE_KEYS = {
   SORT_ORDER: "pastemax-sort-order",
   SEARCH_TERM: "pastemax-search-term",
   EXPANDED_NODES: "pastemax-expanded-nodes",
+  FILE_LIST_VIEW: "pastemax-file-list-view",
+  RECENT_FOLDERS: "pastemax-recent-folders",
 };
+
+// Maximum number of recent folders to store
+const MAX_RECENT_FOLDERS = 10;
 
 const App = () => {
   // Load initial state from localStorage if available
   const savedFolder = localStorage.getItem(STORAGE_KEYS.SELECTED_FOLDER);
+
   const savedFiles = localStorage.getItem(STORAGE_KEYS.SELECTED_FILES);
   const savedSortOrder = localStorage.getItem(STORAGE_KEYS.SORT_ORDER);
   const savedSearchTerm = localStorage.getItem(STORAGE_KEYS.SEARCH_TERM);
+  const savedFileListView = localStorage.getItem(STORAGE_KEYS.FILE_LIST_VIEW);
+
+  // Load recent folders from localStorage
+  const savedRecentFolders = localStorage.getItem(STORAGE_KEYS.RECENT_FOLDERS);
+  const initialRecentFolders = savedRecentFolders
+    ? JSON.parse(savedRecentFolders)
+    : [];
 
   const [selectedFolder, setSelectedFolder] = useState(
     savedFolder as string | null
@@ -54,6 +90,9 @@ const App = () => {
   );
   const [sortOrder, setSortOrder] = useState(savedSortOrder || "path-asc");
   const [searchTerm, setSearchTerm] = useState(savedSearchTerm || "");
+  const [fileListView, setFileListView] = useState(
+    savedFileListView === "flat" ? "flat" : "structured"
+  );
   const [expandedNodes, setExpandedNodes] = useState(
     {} as Record<string, boolean>
   );
@@ -66,9 +105,13 @@ const App = () => {
     message: string;
   });
   const [includeFileTree, setIncludeFileTree] = useState(false);
+  const [recentFolders, setRecentFolders] = useState(
+    initialRecentFolders as string[]
+  );
 
   // State for sort dropdown
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const sortDropdownRef = useRef(null);
 
   // Check if we're running in Electron or browser environment
   const isElectron = window.electron !== undefined;
@@ -114,13 +157,22 @@ const App = () => {
     localStorage.setItem(STORAGE_KEYS.SEARCH_TERM, searchTerm);
   }, [searchTerm]);
 
+  // Persist file list view when it changes
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.FILE_LIST_VIEW, fileListView);
+  }, [fileListView]);
+
+  // Persist recent folders when they change
+  useEffect(() => {
+    localStorage.setItem(
+      STORAGE_KEYS.RECENT_FOLDERS,
+      JSON.stringify(recentFolders)
+    );
+  }, [recentFolders]);
+
   // Load initial data from saved folder
   useEffect(() => {
     if (!isElectron || !selectedFolder) return;
-
-    // Use a flag in sessionStorage to ensure we only load data once per session
-    const hasLoadedInitialData = sessionStorage.getItem("hasLoadedInitialData");
-    if (hasLoadedInitialData === "true") return;
 
     console.log("Loading saved folder on startup:", selectedFolder);
     setProcessingStatus({
@@ -129,8 +181,8 @@ const App = () => {
     });
     window.electron.ipcRenderer.send("request-file-list", selectedFolder);
 
-    // Mark that we've loaded the initial data
-    sessionStorage.setItem("hasLoadedInitialData", "true");
+    // Update recent folders when loading initial folder
+    updateRecentFolders(selectedFolder);
   }, [isElectron, selectedFolder]);
 
   // Listen for folder selection from main process
@@ -152,6 +204,9 @@ const App = () => {
           message: "Requesting file list...",
         });
         window.electron.ipcRenderer.send("request-file-list", folderPath);
+
+        // Update recent folders when a new folder is selected
+        updateRecentFolders(folderPath);
       } else {
         console.error("Invalid folder path received:", folderPath);
         setProcessingStatus({
@@ -420,6 +475,11 @@ const App = () => {
     applyFiltersAndSort(allFiles, sortOrder, newSearch);
   };
 
+  // Handle view change
+  const handleViewChange = (newView: "structured" | "flat") => {
+    setFileListView(newView);
+  };
+
   // Toggle sort dropdown
   const toggleSortDropdown = () => {
     setSortDropdownOpen(!sortDropdownOpen);
@@ -508,12 +568,42 @@ const App = () => {
 
   // Sort options for the dropdown
   const sortOptions = [
-    { value: "path-asc", label: "Structure: A-Z" },
-    { value: "path-desc", label: "Structure: Z-A" },
-    { value: "tokens-desc", label: "Tokens: High to Low" },
-    { value: "tokens-asc", label: "Tokens: Low to High" },
-    { value: "name-asc", label: "Name: A to Z" },
-    { value: "name-desc", label: "Name: Z to A" },
+    {
+      value: "path-asc",
+      label: "Structure: A-Z",
+      icon: <FolderUp size={16} />,
+      description: "Structure: A-Z",
+    },
+    {
+      value: "path-desc",
+      label: "Structure: Z-A",
+      icon: <FolderDown size={16} />,
+      description: "Structure: Z-A",
+    },
+    {
+      value: "tokens-asc",
+      label: "Tokens: Low to High",
+      icon: <ChartNoAxesColumnIncreasingIcon size={16} />,
+      description: "Tokens: Low to High",
+    },
+    {
+      value: "tokens-desc",
+      label: "Tokens: High to Low",
+      icon: <ChartNoAxesColumnDecreasingIcon size={16} />,
+      description: "Tokens: High to Low",
+    },
+    {
+      value: "name-asc",
+      label: "Name: A to Z",
+      icon: <SortAsc size={16} />,
+      description: "Name: A to Z",
+    },
+    {
+      value: "name-desc",
+      label: "Name: Z to A",
+      icon: <SortDesc size={16} />,
+      description: "Name: Z to A",
+    },
   ];
 
   // Handle expand/collapse state changes
@@ -534,39 +624,95 @@ const App = () => {
     });
   };
 
+  // Update recent folders list
+  const updateRecentFolders = (folderPath: string) => {
+    if (!folderPath) return;
+
+    setRecentFolders((prev: string[]) => {
+      // Remove the folderPath if it already exists (to avoid duplicates)
+      const filteredFolders = prev.filter(
+        (path: string) => path !== folderPath
+      );
+      // Add the folderPath to the beginning of the array
+      const updatedFolders = [folderPath, ...filteredFolders];
+      // Limit the number of recent folders
+      return updatedFolders.slice(0, MAX_RECENT_FOLDERS);
+    });
+  };
+
+  // Select a folder from the recent folders list
+  const selectRecentFolder = (folderPath: string) => {
+    if (!folderPath || !isElectron) return;
+
+    // Set selected folder
+    setSelectedFolder(folderPath);
+
+    // Reset related states
+    setSelectedFiles([]);
+    setAllFiles([]);
+    setDisplayedFiles([]);
+    setSearchTerm("");
+
+    // Set processing status
+    setProcessingStatus({
+      status: "processing",
+      message: "Loading files from selected folder...",
+    });
+
+    // Request file list from main process
+    window.electron.ipcRenderer.send("request-file-list", folderPath);
+
+    // Update recent folders list
+    updateRecentFolders(folderPath);
+  };
+
+  // Remove a folder from the recent folders list
+  const removeRecentFolder = (folderPath: string, event: any) => {
+    // Prevent the click from bubbling up to the button
+    event.stopPropagation();
+
+    setRecentFolders((prev: string[]) =>
+      prev.filter((path: string) => path !== folderPath)
+    );
+  };
+
+  // Handle exit from the current folder
+  const handleExitFolder = () => {
+    // Reset all states to initial values
+    setSelectedFolder(null);
+    setSelectedFiles([]);
+    setAllFiles([]);
+    setDisplayedFiles([]);
+    setSearchTerm("");
+    setProcessingStatus({ status: "idle", message: "" });
+
+    // Remove the selected folder from localStorage
+    localStorage.removeItem(STORAGE_KEYS.SELECTED_FOLDER);
+  };
+
+  // Handle clicks outside of sort dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (
+        sortDropdownRef.current &&
+        !sortDropdownRef.current.contains(event.target as Node)
+      ) {
+        setSortDropdownOpen(false);
+      }
+    };
+
+    if (sortDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [sortDropdownOpen]);
+
   return (
     <ThemeProvider>
       <div className="app-container">
-        {/* <header className="header">
-          <h1>PasteMax</h1>
-          <div className="header-actions">
-            <ThemeToggle />
-            <div className="folder-info">
-              {selectedFolder ? (
-                <div className="selected-folder">{selectedFolder}</div>
-              ) : (
-                <span>No folder selected</span>
-              )}
-              <button
-                className="select-folder-btn"
-                onClick={openFolder}
-                disabled={processingStatus.status === "processing"}
-              >
-                Select Folder
-              </button>
-              {selectedFolder && (
-                <button
-                  className="select-folder-btn"
-                  onClick={reloadFolder}
-                  disabled={processingStatus.status === "processing"}
-                >
-                  Reload
-                </button>
-              )}
-            </div>
-          </div>
-        </header> */}
-
         {processingStatus.status === "processing" && (
           <div className="processing-indicator">
             <div className="spinner"></div>
@@ -578,6 +724,54 @@ const App = () => {
           <div className="error-message">Error: {processingStatus.message}</div>
         )}
 
+        {!selectedFolder && (
+          <div className="initial-prompt">
+            <div className="initial-prompt-content">
+              <div className="initial-header">
+                <h2>PasteMax</h2>
+                <div className="initial-actions">
+                  <ThemeToggle />
+                  <button className="select-folder-btn" onClick={openFolder}>
+                    <FolderOpen size={16} />
+                    <span>Select Folder</span>
+                  </button>
+                </div>
+              </div>
+
+              {recentFolders.length > 0 && (
+                <div className="recent-folders-section">
+                  <div className="recent-folders-title">Recent folders</div>
+                  <ul className="recent-folders-list">
+                    {recentFolders.map((folderPath: string, index: number) => (
+                      <button
+                        key={index}
+                        className="recent-folder-item"
+                        onClick={() => selectRecentFolder(folderPath)}
+                        title={folderPath}
+                      >
+                        <div className="recent-folder-content">
+                          <span className="recent-folder-name">
+                            {basename(folderPath)}
+                          </span>
+                          <span className="recent-folder-path">
+                            {folderPath}
+                          </span>
+                        </div>
+                        <button
+                          className="recent-folder-delete"
+                          onClick={(e) => removeRecentFolder(folderPath, e)}
+                          title="Remove from recent folders"
+                        >
+                          <X size={16} />
+                        </button>
+                      </button>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {selectedFolder && (
           <div className="main-content">
             <Sidebar
@@ -612,16 +806,27 @@ const App = () => {
                       className="select-folder-btn"
                       onClick={openFolder}
                       disabled={processingStatus.status === "processing"}
+                      title="Select Folder"
                     >
-                      Select Folder
+                      <FolderOpen size={16} />
                     </button>
                     {selectedFolder && (
                       <button
                         className="select-folder-btn"
                         onClick={reloadFolder}
                         disabled={processingStatus.status === "processing"}
+                        title="Reload"
                       >
-                        Reload
+                        <RefreshCw size={16} />
+                      </button>
+                    )}
+                    {selectedFolder && (
+                      <button
+                        className="select-folder-btn"
+                        onClick={handleExitFolder}
+                        title="Exit"
+                      >
+                        <LogOut size={16} />
                       </button>
                     )}
                   </div>
@@ -631,14 +836,21 @@ const App = () => {
               <div className="content-header">
                 <div className="content-title">Selected Files</div>
                 <div className="content-actions">
-                  <div className="sort-dropdown">
+                  <FileListToggle
+                    view={fileListView}
+                    onChange={handleViewChange}
+                  />
+                  <div className="sort-dropdown" ref={sortDropdownRef}>
                     <button
                       className="sort-dropdown-button"
                       onClick={toggleSortDropdown}
+                      title={
+                        sortOptions.find((opt) => opt.value === sortOrder)
+                          ?.description
+                      }
                     >
-                      Sort:{" "}
-                      {sortOptions.find((opt) => opt.value === sortOrder)
-                        ?.label || sortOrder}
+                      {sortOptions.find((opt) => opt.value === sortOrder)?.icon}
+                      <ArrowUpDown size={13} />
                     </button>
                     {sortDropdownOpen && (
                       <div className="sort-options">
@@ -649,8 +861,10 @@ const App = () => {
                               sortOrder === option.value ? "active" : ""
                             }`}
                             onClick={() => handleSortChange(option.value)}
+                            title={option.description}
                           >
-                            {option.label}
+                            {option.icon}
+                            <span>{option.description}</span>
                           </div>
                         ))}
                       </div>
@@ -668,6 +882,7 @@ const App = () => {
                 selectedFiles={selectedFiles}
                 toggleFileSelection={toggleFileSelection}
                 selectedFolder={selectedFolder}
+                view={fileListView}
               />
 
               <div className="copy-button-container">

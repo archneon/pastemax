@@ -3,12 +3,17 @@ import { FileListProps, FileData } from "../types/FileTypes";
 import FileCard from "./FileCard";
 import { arePathsEqual } from "../utils/pathUtils";
 
+interface ExtendedFileListProps extends FileListProps {
+  view: "structured" | "flat";
+}
+
 const FileList = ({
   files,
   selectedFiles,
   toggleFileSelection,
   selectedFolder,
-}: FileListProps) => {
+  view,
+}: ExtendedFileListProps) => {
   // Only show files that are in the selectedFiles array and not binary/skipped
   const displayableFiles = files.filter(
     (file: FileData) =>
@@ -21,6 +26,9 @@ const FileList = ({
 
   return (
     <div className="file-list-container">
+      <div className="file-list-container-header">
+        {view === "structured" ? "Structured" : "Flat"} view
+      </div>
       {displayableFiles.length > 0 ? (
         <div className="file-list">
           {displayableFiles.map((file: FileData) => (

@@ -1,4 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  Menu,
+  MenuItem,
+} = require("electron");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -153,7 +160,25 @@ function createWindow() {
         mainWindow.webContents.openDevTools({ mode: "detach" });
         console.log(`Loading from dev server at ${startUrl}`);
       });
-    }, 1000);
+    }, 5000);
+
+    // Add 'Inspect Element' context menu in development mode
+    mainWindow.webContents.on("context-menu", (event, params) => {
+      const menu = new Menu();
+      menu.append(
+        new MenuItem({
+          label: "Inspect Element",
+          click: () => {
+            mainWindow.webContents.inspectElement(params.x, params.y);
+            // Focus DevTools if already open
+            if (mainWindow.webContents.isDevToolsOpened()) {
+              mainWindow.webContents.devToolsWebContents?.focus();
+            }
+          },
+        })
+      );
+      menu.popup({ window: mainWindow, x: params.x, y: params.y });
+    });
   } else {
     const indexPath = path.join(__dirname, "dist", "index.html");
     console.log(`Loading from built files at ${indexPath}`);
@@ -177,7 +202,7 @@ function createWindow() {
           process.env.ELECTRON_START_URL || "http://localhost:3000";
         // Clear cache before retrying
         mainWindow.webContents.session.clearCache().then(() => {
-          setTimeout(() => mainWindow.loadURL(retryUrl), 1000);
+          setTimeout(() => mainWindow.loadURL(retryUrl), 5000);
         });
       } else {
         // Retry with explicit file URL
