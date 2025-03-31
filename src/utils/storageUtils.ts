@@ -24,6 +24,7 @@ interface ProjectState {
   sortOrder?: string;
   searchTerm?: string;
   fileListView?: "structured" | "flat";
+  includeFileTree?: boolean;
   lastAccessed?: number;
 }
 
@@ -41,6 +42,7 @@ const defaultProjectState: ProjectState = {
   sortOrder: "path-asc",
   searchTerm: "",
   fileListView: "structured",
+  includeFileTree: false,
 };
 
 /**
@@ -172,6 +174,7 @@ export function loadInitialState(
     sortOrder: state.sortOrder!,
     searchTerm: state.searchTerm!,
     fileListView: state.fileListView!,
+    includeFileTree: state.includeFileTree!,
     lastAccessed: state.lastAccessed,
   };
 }

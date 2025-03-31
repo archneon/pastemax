@@ -101,7 +101,9 @@ const App = () => {
     message: "",
   } satisfies ProcessingStatus);
 
-  const [includeFileTree, setIncludeFileTree] = useState(false);
+  const [includeFileTree, setIncludeFileTree] = useState(
+    initialState.includeFileTree
+  );
   const [recentFolders, setRecentFolders] = useState(loadRecentFolders());
 
   // State for sort dropdown
@@ -197,6 +199,11 @@ const App = () => {
     updateProjectProperty(selectedFolder, "expandedNodes", expandedNodes);
   }, [expandedNodes, selectedFolder]);
 
+  // Persist include file tree setting when it changes
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "includeFileTree", includeFileTree);
+  }, [includeFileTree, selectedFolder]);
+
   // Persist recent folders when they change
   useEffect(() => {
     saveRecentFolders(recentFolders);
@@ -240,6 +247,7 @@ const App = () => {
         setSortOrder(newState.sortOrder);
         setSearchTerm(newState.searchTerm);
         setFileListView(newState.fileListView);
+        setIncludeFileTree(newState.includeFileTree);
 
         // Počistimo sezname datotek
         setAllFiles([]);
@@ -621,6 +629,7 @@ const App = () => {
     setSortOrder(projectState.sortOrder);
     setSearchTerm(projectState.searchTerm);
     setFileListView(projectState.fileListView);
+    setIncludeFileTree(projectState.includeFileTree);
 
     // Ponastavimo sezname datotek
     setAllFiles([]);
@@ -662,6 +671,7 @@ const App = () => {
     setSortOrder(defaultState.sortOrder);
     setSearchTerm(defaultState.searchTerm);
     setFileListView(defaultState.fileListView);
+    setIncludeFileTree(defaultState.includeFileTree);
 
     setAllFiles([]);
     setDisplayedFiles([]);
