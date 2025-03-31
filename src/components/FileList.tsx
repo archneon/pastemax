@@ -1,7 +1,7 @@
 import React from "react";
 import { FileListProps, FileData } from "../types/FileTypes";
 import FileCard from "./FileCard";
-import { arePathsEqual } from "../utils/pathUtils";
+import { arePathsEqual, normalizePath } from "../utils/pathUtils";
 
 interface ExtendedFileListProps extends FileListProps {
   view: "structured" | "flat";
@@ -14,12 +14,13 @@ const FileList = ({
   selectedFolder,
   view,
 }: ExtendedFileListProps) => {
-  // Only show files that are in the selectedFiles array and not binary/skipped
+  // Ustvarimo Set normaliziranih izbranih poti za učinkovito iskanje
+  const selectedPathsSet = new Set(selectedFiles.map(normalizePath));
+
+  // Filtriramo datoteke - prikažemo samo tiste, ki so izbrane
   const displayableFiles = files.filter(
     (file: FileData) =>
-      selectedFiles.some((selectedPath) =>
-        arePathsEqual(selectedPath, file.path)
-      ) &&
+      selectedPathsSet.has(normalizePath(file.path)) &&
       !file.isBinary &&
       !file.isSkipped
   );
@@ -30,12 +31,12 @@ const FileList = ({
         {view === "structured" ? "Structured" : "Flat"} view
       </div>
       {displayableFiles.length > 0 ? (
-        <div className="file-list">
+        <div className={`file-list view-${view}`}>
           {displayableFiles.map((file: FileData) => (
             <FileCard
               key={file.path}
               file={file}
-              isSelected={true} // All displayed files are selected
+              isSelected={true} // Vse prikazane datoteke so izbrane
               toggleSelection={toggleFileSelection}
               selectedFolder={selectedFolder}
             />
@@ -44,8 +45,10 @@ const FileList = ({
       ) : (
         <div className="file-list-empty">
           {files.length > 0
-            ? "No files selected. Select files from the sidebar."
-            : "Select a folder to view files"}
+            ? "Nobena datoteka ni izbrana. Izberite datoteke v stranski vrstici."
+            : selectedFolder
+            ? "Nalaganje datotek ali mapa je prazna."
+            : "Izberite mapo za prikaz datotek."}
         </div>
       )}
     </div>

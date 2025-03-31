@@ -160,7 +160,7 @@ function createWindow() {
         mainWindow.webContents.openDevTools({ mode: "detach" });
         console.log(`Loading from dev server at ${startUrl}`);
       });
-    }, 5000);
+    }, 500);
 
     // Add 'Inspect Element' context menu in development mode
     mainWindow.webContents.on("context-menu", (event, params) => {
@@ -202,7 +202,7 @@ function createWindow() {
           process.env.ELECTRON_START_URL || "http://localhost:3000";
         // Clear cache before retrying
         mainWindow.webContents.session.clearCache().then(() => {
-          setTimeout(() => mainWindow.loadURL(retryUrl), 5000);
+          setTimeout(() => mainWindow.loadURL(retryUrl), 500);
         });
       } else {
         // Retry with explicit file URL

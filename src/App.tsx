@@ -4,6 +4,7 @@ import React, {
   MouseEvent,
   useRef,
   RefObject,
+  useCallback,
 } from "react";
 import Sidebar from "./components/Sidebar";
 import FileList from "./components/FileList";
@@ -20,6 +21,16 @@ import {
   comparePaths,
   basename,
 } from "./utils/pathUtils";
+import {
+  getLastSelectedFolder,
+  saveLastSelectedFolder,
+  loadInitialState,
+  updateProjectProperty,
+  getProjectState,
+  saveProjectState,
+  loadRecentFolders,
+  saveRecentFolders,
+} from "./utils/storageUtils";
 import {
   X,
   FolderOpen,
@@ -52,122 +63,143 @@ declare global {
   }
 }
 
-// Keys for localStorage
-const STORAGE_KEYS = {
-  SELECTED_FOLDER: "pastemax-selected-folder",
-  SELECTED_FILES: "pastemax-selected-files",
-  SORT_ORDER: "pastemax-sort-order",
-  SEARCH_TERM: "pastemax-search-term",
-  EXPANDED_NODES: "pastemax-expanded-nodes",
-  FILE_LIST_VIEW: "pastemax-file-list-view",
-  RECENT_FOLDERS: "pastemax-recent-folders",
-};
-
 // Maximum number of recent folders to store
 const MAX_RECENT_FOLDERS = 10;
 
 const App = () => {
-  // Load initial state from localStorage if available
-  const savedFolder = localStorage.getItem(STORAGE_KEYS.SELECTED_FOLDER);
+  // Določimo tip za lastSelectedFolder
+  const lastSelectedFolder = getLastSelectedFolder();
+  // Uporabimo ustrezno tipizirano začetno vrednost brez eksplicitne tipizacije v useState
+  const [selectedFolder, setSelectedFolder] = useState(lastSelectedFolder);
 
-  const savedFiles = localStorage.getItem(STORAGE_KEYS.SELECTED_FILES);
-  const savedSortOrder = localStorage.getItem(STORAGE_KEYS.SORT_ORDER);
-  const savedSearchTerm = localStorage.getItem(STORAGE_KEYS.SEARCH_TERM);
-  const savedFileListView = localStorage.getItem(STORAGE_KEYS.FILE_LIST_VIEW);
+  // Naloži začetno stanje za trenutno izbrano mapo
+  const initialState = loadInitialState(selectedFolder);
 
-  // Load recent folders from localStorage
-  const savedRecentFolders = localStorage.getItem(STORAGE_KEYS.RECENT_FOLDERS);
-  const initialRecentFolders = savedRecentFolders
-    ? JSON.parse(savedRecentFolders)
-    : [];
-
-  const [selectedFolder, setSelectedFolder] = useState(
-    savedFolder as string | null
-  );
   const [allFiles, setAllFiles] = useState([] as FileData[]);
   const [selectedFiles, setSelectedFiles] = useState(
-    savedFiles ? JSON.parse(savedFiles) : ([] as string[])
+    initialState.selectedFiles
   );
-  const [sortOrder, setSortOrder] = useState(savedSortOrder || "path-asc");
-  const [searchTerm, setSearchTerm] = useState(savedSearchTerm || "");
+  const [sortOrder, setSortOrder] = useState(initialState.sortOrder);
+  const [searchTerm, setSearchTerm] = useState(initialState.searchTerm);
   const [fileListView, setFileListView] = useState(
-    savedFileListView === "flat" ? "flat" : "structured"
+    initialState.fileListView as "structured" | "flat"
   );
   const [expandedNodes, setExpandedNodes] = useState(
-    {} as Record<string, boolean>
+    initialState.expandedNodes as Record<string, boolean>
   );
   const [displayedFiles, setDisplayedFiles] = useState([] as FileData[]);
-  const [processingStatus, setProcessingStatus] = useState({
-    status: "idle",
-    message: "",
-  } as {
+
+  // Definiramo tip za statusni objekt
+  type ProcessingStatus = {
     status: "idle" | "processing" | "complete" | "error";
     message: string;
-  });
+  };
+
+  // Uporabimo ta tip pri useState
+  const [processingStatus, setProcessingStatus] = useState({
+    status: "idle" as const,
+    message: "",
+  } satisfies ProcessingStatus);
+
   const [includeFileTree, setIncludeFileTree] = useState(false);
-  const [recentFolders, setRecentFolders] = useState(
-    initialRecentFolders as string[]
-  );
+  const [recentFolders, setRecentFolders] = useState(loadRecentFolders());
 
   // State for sort dropdown
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  // Bolj neposredna uporaba useRef
   const sortDropdownRef = useRef(null);
 
   // Check if we're running in Electron or browser environment
   const isElectron = window.electron !== undefined;
 
-  // Load expanded nodes state from localStorage
-  useEffect(() => {
-    const savedExpandedNodes = localStorage.getItem(
-      STORAGE_KEYS.EXPANDED_NODES
-    );
-    if (savedExpandedNodes) {
-      try {
-        setExpandedNodes(JSON.parse(savedExpandedNodes));
-      } catch (error) {
-        console.error("Error parsing saved expanded nodes:", error);
-      }
-    }
+  // Update recent folders list - najprej definiramo funkcijo
+  const updateRecentFolders = useCallback((folderPath: string) => {
+    if (!folderPath) return;
+
+    setRecentFolders((prev: string[]) => {
+      // Odstranimo duplicirane poti
+      const filtered = prev.filter(
+        (path: string) => !arePathsEqual(path, folderPath)
+      );
+      // Dodamo novo pot na začetek in omejimo število na MAX_RECENT_FOLDERS
+      return [normalizePath(folderPath), ...filtered].slice(
+        0,
+        MAX_RECENT_FOLDERS
+      );
+    });
   }, []);
+
+  // Apply filters and sorting to files - pretvorimo v useCallback za pravilno referenciranje
+  const applyFiltersAndSort = useCallback(
+    (files: FileData[], sort: string, filter: string) => {
+      let filtered = files;
+
+      // Apply filter
+      if (filter) {
+        const lowerFilter = filter.toLowerCase();
+        filtered = files.filter(
+          (file) =>
+            file.name.toLowerCase().includes(lowerFilter) ||
+            file.path.toLowerCase().includes(lowerFilter)
+        );
+      }
+
+      // Apply sort
+      const [sortKey, sortDir] = sort.split("-");
+      const sorted = [...filtered].sort((a, b) => {
+        let comparison = 0;
+
+        if (sortKey === "name") {
+          comparison = a.name.localeCompare(b.name);
+        } else if (sortKey === "tokens") {
+          comparison = a.tokenCount - b.tokenCount;
+        } else if (sortKey === "size") {
+          comparison = a.size - b.size;
+        } else if (sortKey === "path") {
+          comparison = comparePaths(a.path, b.path);
+        }
+
+        return sortDir === "asc" ? comparison : -comparison;
+      });
+
+      setDisplayedFiles(sorted);
+    },
+    []
+  );
 
   // Persist selected folder when it changes
   useEffect(() => {
-    if (selectedFolder) {
-      localStorage.setItem(STORAGE_KEYS.SELECTED_FOLDER, selectedFolder);
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.SELECTED_FOLDER);
-    }
+    saveLastSelectedFolder(selectedFolder);
   }, [selectedFolder]);
 
   // Persist selected files when they change
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEYS.SELECTED_FILES,
-      JSON.stringify(selectedFiles)
-    );
-  }, [selectedFiles]);
+    updateProjectProperty(selectedFolder, "selectedFiles", selectedFiles);
+  }, [selectedFiles, selectedFolder]);
 
   // Persist sort order when it changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SORT_ORDER, sortOrder);
-  }, [sortOrder]);
+    updateProjectProperty(selectedFolder, "sortOrder", sortOrder);
+  }, [sortOrder, selectedFolder]);
 
   // Persist search term when it changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SEARCH_TERM, searchTerm);
-  }, [searchTerm]);
+    updateProjectProperty(selectedFolder, "searchTerm", searchTerm);
+  }, [searchTerm, selectedFolder]);
 
   // Persist file list view when it changes
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.FILE_LIST_VIEW, fileListView);
-  }, [fileListView]);
+    updateProjectProperty(selectedFolder, "fileListView", fileListView);
+  }, [fileListView, selectedFolder]);
+
+  // Persist expanded nodes when they change
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "expandedNodes", expandedNodes);
+  }, [expandedNodes, selectedFolder]);
 
   // Persist recent folders when they change
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEYS.RECENT_FOLDERS,
-      JSON.stringify(recentFolders)
-    );
+    saveRecentFolders(recentFolders);
   }, [recentFolders]);
 
   // Load initial data from saved folder
@@ -183,7 +215,7 @@ const App = () => {
 
     // Update recent folders when loading initial folder
     updateRecentFolders(selectedFolder);
-  }, [isElectron, selectedFolder]);
+  }, [isElectron, selectedFolder, updateRecentFolders]);
 
   // Listen for folder selection from main process
   useEffect(() => {
@@ -196,17 +228,32 @@ const App = () => {
       // Check if folderPath is valid string
       if (typeof folderPath === "string") {
         console.log("Folder selected:", folderPath);
-        setSelectedFolder(folderPath);
-        // Clear selected files
-        setSelectedFiles([]);
+        const normalizedPath = normalizePath(folderPath);
+
+        // Najprej nastavimo novo izbrano mapo
+        setSelectedFolder(normalizedPath);
+
+        // Naložimo stanje za novo mapo iz localStorage
+        const newState = loadInitialState(normalizedPath);
+        setSelectedFiles(newState.selectedFiles);
+        setExpandedNodes(newState.expandedNodes);
+        setSortOrder(newState.sortOrder);
+        setSearchTerm(newState.searchTerm);
+        setFileListView(newState.fileListView);
+
+        // Počistimo sezname datotek
+        setAllFiles([]);
+        setDisplayedFiles([]);
+
+        // Nastavimo status in zahtevamo seznam datotek
         setProcessingStatus({
           status: "processing",
           message: "Requesting file list...",
         });
-        window.electron.ipcRenderer.send("request-file-list", folderPath);
+        window.electron.ipcRenderer.send("request-file-list", normalizedPath);
 
         // Update recent folders when a new folder is selected
-        updateRecentFolders(folderPath);
+        updateRecentFolders(normalizedPath);
       } else {
         console.error("Invalid folder path received:", folderPath);
         setProcessingStatus({
@@ -227,8 +274,7 @@ const App = () => {
       // Apply filters and sort to the new files
       applyFiltersAndSort(files, sortOrder, searchTerm);
 
-      // By default, don't select any files - leave them all unselected
-      setSelectedFiles([]);
+      // Ne resetiramo več izbranih datotek, saj jih že naložimo iz localStorage
     };
 
     const handleProcessingStatus = (status: {
@@ -260,7 +306,14 @@ const App = () => {
         handleProcessingStatus
       );
     };
-  }, [isElectron, sortOrder, searchTerm]);
+  }, [
+    isElectron,
+    sortOrder,
+    searchTerm,
+    applyFiltersAndSort,
+    updateRecentFolders,
+    loadInitialState,
+  ]);
 
   const openFolder = () => {
     if (isElectron) {
@@ -270,45 +323,6 @@ const App = () => {
     } else {
       console.warn("Folder selection not available in browser");
     }
-  };
-
-  // Apply filters and sorting to files
-  const applyFiltersAndSort = (
-    files: FileData[],
-    sort: string,
-    filter: string
-  ) => {
-    let filtered = files;
-
-    // Apply filter
-    if (filter) {
-      const lowerFilter = filter.toLowerCase();
-      filtered = files.filter(
-        (file) =>
-          file.name.toLowerCase().includes(lowerFilter) ||
-          file.path.toLowerCase().includes(lowerFilter)
-      );
-    }
-
-    // Apply sort
-    const [sortKey, sortDir] = sort.split("-");
-    const sorted = [...filtered].sort((a, b) => {
-      let comparison = 0;
-
-      if (sortKey === "name") {
-        comparison = a.name.localeCompare(b.name);
-      } else if (sortKey === "tokens") {
-        comparison = a.tokenCount - b.tokenCount;
-      } else if (sortKey === "size") {
-        comparison = a.size - b.size;
-      } else if (sortKey === "path") {
-        comparison = comparePaths(a.path, b.path);
-      }
-
-      return sortDir === "asc" ? comparison : -comparison;
-    });
-
-    setDisplayedFiles(sorted);
   };
 
   // Toggle file selection
@@ -377,90 +391,62 @@ const App = () => {
     }
   };
 
-  // Refresh the current folder to show new files/directories
-  const refreshFolder = () => {
+  // Generic function for refresh/reload behavior (preserves selection)
+  const refreshOrReloadFolder = (action: "refresh" | "reload") => {
     if (!selectedFolder || !isElectron) return;
 
+    console.log(
+      `${
+        action === "refresh" ? "Refreshing" : "Reloading"
+      } folder: ${selectedFolder}`
+    );
     setProcessingStatus({
       status: "processing",
-      message: "Refreshing folder...",
+      message: `${action === "refresh" ? "Refreshing" : "Reloading"} folder...`,
     });
 
-    // Save current selection before refreshing
-    const currentSelection = [...selectedFiles];
+    // Pomembno: shranimo trenutno stanje izbranih datotek
+    const selectionToPreserve = [...selectedFiles];
 
-    // Set up a listener for file list data that preserves selection
-    const handleRefreshFileListData = (files: FileData[]) => {
-      console.log("Received refreshed file list data:", files.length, "files");
-      setAllFiles(files);
-
-      // Apply filters and sort to the new files
-      applyFiltersAndSort(files, sortOrder, searchTerm);
-
-      // Keep only the previously selected files that still exist
-      const updatedSelection = currentSelection.filter((selectedPath) =>
-        files.some((file) => arePathsEqual(file.path, selectedPath))
+    // Definiramo listener za trenutno osvežitev/ponovno nalaganje
+    const handleDataForRefresh = (refreshedFiles: FileData[]) => {
+      console.log(
+        `Received data for ${action}: ${refreshedFiles.length} files`
       );
 
-      setSelectedFiles(updatedSelection);
+      // Obnovimo izbiro na podlagi shranjenih datotek in novega seznama datotek
+      const validPaths = new Set(
+        refreshedFiles.map((f) => normalizePath(f.path))
+      );
+      const restoredSelection = selectionToPreserve.filter((p) =>
+        validPaths.has(normalizePath(p))
+      );
+
+      setAllFiles(refreshedFiles);
+      applyFiltersAndSort(refreshedFiles, sortOrder, searchTerm);
+      setSelectedFiles(restoredSelection);
 
       setProcessingStatus({
         status: "complete",
-        message: `Refreshed ${files.length} files`,
+        message: `Folder ${action === "refresh" ? "refreshed" : "reloaded"}`,
       });
 
-      // Remove this one-time listener
+      // Odstranimo listener po uporabi
       window.electron.ipcRenderer.removeListener(
         "file-list-data",
-        handleRefreshFileListData
+        handleDataForRefresh
       );
     };
 
-    // Add the one-time listener
-    window.electron.ipcRenderer.on("file-list-data", handleRefreshFileListData);
+    // Dodamo listener preden pošljemo zahtevo
+    window.electron.ipcRenderer.on("file-list-data", handleDataForRefresh);
 
-    // Request file list from main process
+    // Zahtevamo osvežitev seznama datotek
     window.electron.ipcRenderer.send("request-file-list", selectedFolder);
   };
 
-  // Reload the current folder (reset selection to default state)
-  const reloadFolder = () => {
-    if (!selectedFolder || !isElectron) return;
-
-    setProcessingStatus({
-      status: "processing",
-      message: "Reloading folder...",
-    });
-
-    // Set up a listener for file list data that resets selection
-    const handleReloadFileListData = (files: FileData[]) => {
-      console.log("Received reloaded file list data:", files.length, "files");
-      setAllFiles(files);
-
-      // Apply filters and sort to the new files
-      applyFiltersAndSort(files, sortOrder, searchTerm);
-
-      // Reset selection to default state (all unselected)
-      setSelectedFiles([]);
-
-      setProcessingStatus({
-        status: "complete",
-        message: `Reloaded ${files.length} files`,
-      });
-
-      // Remove this one-time listener
-      window.electron.ipcRenderer.removeListener(
-        "file-list-data",
-        handleReloadFileListData
-      );
-    };
-
-    // Add the one-time listener
-    window.electron.ipcRenderer.on("file-list-data", handleReloadFileListData);
-
-    // Request file list from main process
-    window.electron.ipcRenderer.send("request-file-list", selectedFolder);
-  };
+  const refreshFolder = () => refreshOrReloadFolder("refresh");
+  const reloadFolder = () => refreshOrReloadFolder("reload");
 
   // Handle sort change
   const handleSortChange = (newSort: string) => {
@@ -570,39 +556,39 @@ const App = () => {
   const sortOptions = [
     {
       value: "path-asc",
-      label: "Structure: A-Z",
+      label: "Structure (A-Z)",
       icon: <FolderUp size={16} />,
-      description: "Structure: A-Z",
+      description: "Structure (A-Z)",
     },
     {
       value: "path-desc",
-      label: "Structure: Z-A",
+      label: "Structure (Z-A)",
       icon: <FolderDown size={16} />,
-      description: "Structure: Z-A",
+      description: "Structure (Z-A)",
     },
     {
       value: "tokens-asc",
-      label: "Tokens: Low to High",
+      label: "Tokens (Low to High)",
       icon: <ChartNoAxesColumnIncreasingIcon size={16} />,
-      description: "Tokens: Low to High",
+      description: "Tokens (Low to High)",
     },
     {
       value: "tokens-desc",
-      label: "Tokens: High to Low",
+      label: "Tokens (High to Low)",
       icon: <ChartNoAxesColumnDecreasingIcon size={16} />,
-      description: "Tokens: High to Low",
+      description: "Tokens (High to Low)",
     },
     {
       value: "name-asc",
-      label: "Name: A to Z",
+      label: "Name (A to Z)",
       icon: <SortAsc size={16} />,
-      description: "Name: A to Z",
+      description: "Name (A to Z)",
     },
     {
       value: "name-desc",
-      label: "Name: Z to A",
+      label: "Name (Z to A)",
       icon: <SortDesc size={16} />,
-      description: "Name: Z to A",
+      description: "Name (Z to A)",
     },
   ];
 
@@ -614,29 +600,10 @@ const App = () => {
         [nodeId]: prev[nodeId] === undefined ? false : !prev[nodeId],
       };
 
-      // Save to localStorage
-      localStorage.setItem(
-        STORAGE_KEYS.EXPANDED_NODES,
-        JSON.stringify(newState)
-      );
+      // Posodobimo stanje v localStorage preko storageUtils
+      updateProjectProperty(selectedFolder, "expandedNodes", newState);
 
       return newState;
-    });
-  };
-
-  // Update recent folders list
-  const updateRecentFolders = (folderPath: string) => {
-    if (!folderPath) return;
-
-    setRecentFolders((prev: string[]) => {
-      // Remove the folderPath if it already exists (to avoid duplicates)
-      const filteredFolders = prev.filter(
-        (path: string) => path !== folderPath
-      );
-      // Add the folderPath to the beginning of the array
-      const updatedFolders = [folderPath, ...filteredFolders];
-      // Limit the number of recent folders
-      return updatedFolders.slice(0, MAX_RECENT_FOLDERS);
     });
   };
 
@@ -644,25 +611,31 @@ const App = () => {
   const selectRecentFolder = (folderPath: string) => {
     if (!folderPath || !isElectron) return;
 
-    // Set selected folder
+    // Nastavimo izbrano mapo
     setSelectedFolder(folderPath);
 
-    // Reset related states
-    setSelectedFiles([]);
+    // Naložimo stanje za to projektno mapo
+    const projectState = loadInitialState(folderPath);
+    setSelectedFiles(projectState.selectedFiles);
+    setExpandedNodes(projectState.expandedNodes);
+    setSortOrder(projectState.sortOrder);
+    setSearchTerm(projectState.searchTerm);
+    setFileListView(projectState.fileListView);
+
+    // Ponastavimo sezname datotek
     setAllFiles([]);
     setDisplayedFiles([]);
-    setSearchTerm("");
 
-    // Set processing status
+    // Nastavimo status
     setProcessingStatus({
       status: "processing",
-      message: "Loading files from selected folder...",
+      message: "Nalagam datoteke iz izbrane mape...",
     });
 
-    // Request file list from main process
+    // Zahtevamo seznam datotek
     window.electron.ipcRenderer.send("request-file-list", folderPath);
 
-    // Update recent folders list
+    // Posodobimo seznam nedavnih map
     updateRecentFolders(folderPath);
   };
 
@@ -678,16 +651,21 @@ const App = () => {
 
   // Handle exit from the current folder
   const handleExitFolder = () => {
-    // Reset all states to initial values
+    // Ponastavimo vse na začetne vrednosti
+    saveLastSelectedFolder(null);
     setSelectedFolder(null);
-    setSelectedFiles([]);
+
+    // Naložimo privzeto stanje
+    const defaultState = loadInitialState(null);
+    setSelectedFiles(defaultState.selectedFiles);
+    setExpandedNodes(defaultState.expandedNodes);
+    setSortOrder(defaultState.sortOrder);
+    setSearchTerm(defaultState.searchTerm);
+    setFileListView(defaultState.fileListView);
+
     setAllFiles([]);
     setDisplayedFiles([]);
-    setSearchTerm("");
     setProcessingStatus({ status: "idle", message: "" });
-
-    // Remove the selected folder from localStorage
-    localStorage.removeItem(STORAGE_KEYS.SELECTED_FOLDER);
   };
 
   // Handle clicks outside of sort dropdown
