@@ -19,6 +19,7 @@ import {
   normalizePath,
   arePathsEqual,
   comparePaths,
+  comparePathsStructurally,
   basename,
 } from "./utils/pathUtils";
 import {
@@ -156,7 +157,7 @@ const App = () => {
         } else if (sortKey === "size") {
           comparison = a.size - b.size;
         } else if (sortKey === "path") {
-          comparison = comparePaths(a.path, b.path);
+          comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
         }
 
         return sortDir === "asc" ? comparison : -comparison;
@@ -164,7 +165,7 @@ const App = () => {
 
       setDisplayedFiles(sorted);
     },
-    []
+    [selectedFolder]
   );
 
   // Persist selected folder when it changes
@@ -510,7 +511,7 @@ const App = () => {
         } else if (sortKey === "size") {
           comparison = a.size - b.size;
         } else if (sortKey === "path") {
-          comparison = comparePaths(a.path, b.path);
+          comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
         }
 
         return sortDir === "asc" ? comparison : -comparison;

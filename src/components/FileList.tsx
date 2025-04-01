@@ -14,10 +14,10 @@ const FileList = ({
   selectedFolder,
   view,
 }: ExtendedFileListProps) => {
-  // Ustvarimo Set normaliziranih izbranih poti za učinkovito iskanje
+  // Create a Set of normalized selected paths for efficient searching
   const selectedPathsSet = new Set(selectedFiles.map(normalizePath));
 
-  // Filtriramo datoteke - prikažemo samo tiste, ki so izbrane
+  // Filter files - show only the selected ones
   const displayableFiles = files.filter(
     (file: FileData) =>
       selectedPathsSet.has(normalizePath(file.path)) &&
@@ -36,7 +36,7 @@ const FileList = ({
             <FileCard
               key={file.path}
               file={file}
-              isSelected={true} // Vse prikazane datoteke so izbrane
+              isSelected={true} // All displayed files are selected
               toggleSelection={toggleFileSelection}
               selectedFolder={selectedFolder}
             />
@@ -45,10 +45,10 @@ const FileList = ({
       ) : (
         <div className="file-list-empty">
           {files.length > 0
-            ? "Nobena datoteka ni izbrana. Izberite datoteke v stranski vrstici."
+            ? "No file is selected. Select files in the sidebar."
             : selectedFolder
-            ? "Nalaganje datotek ali mapa je prazna."
-            : "Izberite mapo za prikaz datotek."}
+            ? "The loaded file or folder is empty."
+            : "Select a folder to display files."}
         </div>
       )}
     </div>

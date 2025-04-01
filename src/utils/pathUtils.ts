@@ -268,3 +268,66 @@ export function comparePaths(pathA: string, pathB: string): number {
 
   return normalizedA.localeCompare(normalizedB);
 }
+
+/**
+ * Compares two file paths structurally, mimicking file tree sorting (dirs first, then files, within each level).
+ * This maintains the same hierarchy as shown in the sidebar file tree.
+ * @param pathA First path
+ * @param pathB Second path
+ * @param rootPath The root directory to make paths relative to
+ * @returns -1 if pathA < pathB, 0 if equal, 1 if pathA > pathB
+ */
+export function comparePathsStructurally(
+  pathA: string,
+  pathB: string,
+  rootPath: string | null
+): number {
+  // Fallback to simple localeCompare if no root is defined or paths are identical
+  if (!rootPath) return comparePaths(pathA, pathB);
+  if (pathA === pathB) return 0;
+
+  // Get relative paths from the root folder
+  const relA = getRelativePath(pathA, rootPath);
+  const relB = getRelativePath(pathB, rootPath);
+
+  // Split paths into segments
+  const partsA = relA.split("/");
+  const partsB = relB.split("/");
+
+  const lenA = partsA.length;
+  const lenB = partsB.length;
+  const maxLen = Math.max(lenA, lenB);
+
+  // Compare path segments one by one
+  for (let i = 0; i < maxLen; i++) {
+    const segmentA = partsA[i];
+    const segmentB = partsB[i];
+
+    // Handle reaching the end of one path (one is an ancestor of the other)
+    if (segmentA === undefined) return -1; // A is shorter (ancestor dir), comes first
+    if (segmentB === undefined) return 1; // B is shorter (ancestor dir), comes first
+
+    // If we're at the last segment for both paths, compare them directly
+    if (i === lenA - 1 && i === lenB - 1) {
+      return segmentA.localeCompare(segmentB);
+    }
+
+    // Compare segments if they differ
+    if (segmentA !== segmentB) {
+      // Determine if the paths at this level represent a directory or a file
+      // A path segment is a directory if it's not the last segment
+      const isDirA = i < lenA - 1;
+      const isDirB = i < lenB - 1;
+
+      // Apply directories before files logic
+      if (isDirA && !isDirB) return -1; // Directory A comes before File B
+      if (!isDirA && isDirB) return 1; // File A comes after Directory B
+
+      // Both are dirs or both are files at this level, sort alphabetically
+      return segmentA.localeCompare(segmentB);
+    }
+  }
+
+  // Should be unreachable if paths are different, but return 0 for safety
+  return 0;
+}
