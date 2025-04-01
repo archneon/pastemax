@@ -252,13 +252,15 @@ input[type="search"]:focus {
 } */
 
 .sidebar-search {
-  padding: 12px 16px 0px 16px;
+  /* padding: 12px 16px 0px 16px; */
+  padding: 8px 12px 0px 12px;
   background-color: var(--background-secondary);
 }
 
 .sidebar-actions {
   display: flex;
-  padding: 12px 16px;
+  /* padding: 12px 16px; */
+  padding: 8px 12px;
   gap: 8px;
   border-bottom: 1px solid var(--border-color);
   background-color: var(--background-secondary);
@@ -307,7 +309,6 @@ input[type="search"]:focus {
 .tree-item {
   display: flex;
   align-items: center;
-  /* padding: 6px 8px; */
   padding: 2px 8px;
   margin: 0px 0;
   border-radius: 4px;

@@ -3,51 +3,55 @@
     "open": "_START",
     "close": "_END"
   },
-  "delimiters": {
-    "section": {
-      "marker": "%%%%",
-      "tag_prefix": "SECTION_"
-    },
-    "description": {
-      "marker": "++++",
-      "tag_prefix": "DESCRIPTION"
-    },
-    "file": {
-      "marker": "::::",
-      "tag_prefix": "FILE"
-      // "path_delimiter": ": "
-    }
+  "markers": {
+    "section": "@@@@",
+    "description": "%%%%",
+    "file": ">>>>"
+  },
+  "prompt_overview": {
+    "enabled": true
+  },
+  "project_tree": {
+    "name": "PROJECT_TREE"
   },
   "sections": [
     {
-      "id": "PROJECT_TREE",
-      "description": "High-level overview of the project folder and file structure."
-    },
-    {
-      "id": "RULES",
+      "id": "rules",
+      "name": "RULES",
+      "label": "Rules",
       "directory": "ai/rules",
       "sort_order": 1,
       "enabled": true,
-      "description": "Defines AI behavior, role, constraints, and operating logic."
+      "color": "accent-yellow",
+      "description": "Defines the AI role, constraints, and operating logic."
     },
     {
-      "id": "DOCUMENTATION",
+      "id": "docs",
+      "name": "DOCUMENTATION",
+      "label": "Docs",
       "directory": "ai/docs",
       "sort_order": 2,
       "enabled": true,
-      "description": "Latest documentation that overrides or complements model knowledge."
+      "color": "accent-green",
+      "description": "Latest documentation overriding model defaults."
     },
     {
-      "id": "SOURCE_CODE",
+      "id": "project_files",
+      "name": "PROJECT_FILES",
+      "label": "Project",
       "sort_order": 3,
-      "description": ""
+      "color": "accent-blue",
+      "description": "All other project files, such as source code and configuration files that do not belong to categorized sections."
     },
     {
-      "id": "PROMPTS",
+      "id": "prompts",
+      "name": "PROMPTS",
+      "label": "Prompts",
       "directory": "ai/prompts",
       "sort_order": 4,
       "enabled": true,
-      "description": "Specific task instructions, requests, and custom prompts."
+      "color": "accent-red",
+      "description": "The actual task(s) or requests to be performed by the AI."
     }
   ]
 }
