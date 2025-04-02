@@ -574,10 +574,124 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
   return results;
 }
 
+// Dodamo sledenje zadnji obdelani mapi
+let lastProcessedFolder = null;
+let isProcessing = false;
+
 // Handle file list request
 ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
   try {
-    log.info("Processing file list for folder:", folderPath);
+    // Handle both old format (string) and new format (object)
+    const options =
+      typeof folderPath === "object" ? folderPath : { path: folderPath };
+    const targetPath = options.path || folderPath;
+    const forceRefresh = options.forceRefresh || false;
+
+    // Log request details for debugging
+    log.debug(`Received request-file-list for path: ${targetPath}`);
+    log.debug(
+      `Request options - forceRefresh: ${forceRefresh}, isProcessing: ${isProcessing}`
+    );
+
+    // Check if we're already processing AND this isn't a forced refresh
+    if (isProcessing && !forceRefresh) {
+      log.debug(
+        "Ignoring request - already processing a folder and not a forced refresh"
+      );
+
+      // Still send an update to the renderer to acknowledge the request was received
+      event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
+        status: "processing",
+        message: "Currently processing another request...",
+      });
+
+      return;
+    }
+
+    // Check if this is a duplicate request for the same folder WITHOUT force refresh
+    if (!forceRefresh && lastProcessedFolder === targetPath) {
+      log.debug(
+        "Duplicate request detected for the same folder - sending cached response"
+      );
+
+      // Send status update
+      event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
+        status: "processing",
+        message: "Using cached folder data...",
+      });
+
+      // Important change: Don't just return, but continue to send data
+      // Process files to ensure they're sent again
+      try {
+        // Read files again to ensure latest data
+        const files = readFilesRecursively(targetPath, targetPath);
+        log.info(`Re-sending ${files.length} cached files for ${targetPath}`);
+
+        // Process files for serialization
+        const serializableFiles = files.map((file) => {
+          const normalizedPath = normalizePath(file.path);
+          return {
+            name: file.name ? String(file.name) : "",
+            path: normalizedPath,
+            tokenCount:
+              typeof file.tokenCount === "number" ? file.tokenCount : 0,
+            size: typeof file.size === "number" ? file.size : 0,
+            content: file.isBinary
+              ? ""
+              : typeof file.content === "string"
+              ? file.content
+              : "",
+            isBinary: Boolean(file.isBinary),
+            isSkipped: Boolean(file.isSkipped),
+            error: file.error ? String(file.error) : null,
+            fileType: file.fileType ? String(file.fileType) : null,
+            excludedByDefault: shouldExcludeByDefault(
+              normalizedPath,
+              normalizePath(targetPath)
+            ),
+            descriptionForSectionId: file.descriptionForSectionId
+              ? String(file.descriptionForSectionId)
+              : null,
+            isOverviewTemplate: Boolean(file.isOverviewTemplate),
+            isProjectTreeDescription: Boolean(file.isProjectTreeDescription),
+          };
+        });
+
+        // Send updated processing status
+        event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
+          status: "complete",
+          message: `Found ${serializableFiles.length} files`,
+        });
+
+        // Send the file data
+        event.sender.send(IPC_CHANNELS.FILE_LIST_DATA, serializableFiles);
+        log.debug(`Re-sent cached file list for ${targetPath}`);
+      } catch (err) {
+        log.error(`Error re-sending cached data: ${err.message}`);
+        // In case of error, clear the folder cache to force full reload next time
+        lastProcessedFolder = null;
+        event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
+          status: "error",
+          message: `Error reading cached folder: ${err.message}`,
+        });
+      }
+
+      return;
+    }
+
+    // If we were already processing something but this is a forced refresh,
+    // we need to handle it - log this special case
+    if (isProcessing && forceRefresh) {
+      log.debug(
+        "Force refresh requested while already processing - proceeding anyway"
+      );
+    }
+
+    // Set processing flags
+    isProcessing = true;
+    lastProcessedFolder = targetPath;
+
+    log.info("Processing file list for folder:", targetPath);
     log.info("OS platform:", os.platform());
     log.info("Path separator:", getPathSeparator());
 
@@ -589,8 +703,8 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
 
     // Process files in chunks to avoid blocking the UI
     const processFiles = () => {
-      const files = readFilesRecursively(folderPath, folderPath);
-      log.info(`Found ${files.length} files in ${folderPath}`);
+      const files = readFilesRecursively(targetPath, targetPath);
+      log.info(`Found ${files.length} files in ${targetPath}`);
 
       // Update with processing complete status
       event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
@@ -617,7 +731,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
           fileType: file.fileType ? String(file.fileType) : null,
           excludedByDefault: shouldExcludeByDefault(
             normalizedPath,
-            normalizePath(folderPath)
+            normalizePath(targetPath)
           ),
           descriptionForSectionId: file.descriptionForSectionId
             ? String(file.descriptionForSectionId)
@@ -650,6 +764,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
         }
 
         event.sender.send(IPC_CHANNELS.FILE_LIST_DATA, serializableFiles);
+        isProcessing = false;
       } catch (sendErr) {
         log.error("Error sending file data:", sendErr);
 
@@ -671,6 +786,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
             0
           ),
         });
+        isProcessing = false;
       }
     };
 
@@ -682,6 +798,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
       status: "error",
       message: `Error: ${err.message}`,
     });
+    isProcessing = false;
   }
 });
 

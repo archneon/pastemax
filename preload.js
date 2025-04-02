@@ -1,9 +1,17 @@
 // Preload script
 const { contextBridge, ipcRenderer } = require("electron");
 
-// Althogh we already have IPC_CHANNELS in constants.js, it is impossible to require
-// constants.js in preload.js, due to special Electron restrictions.
-// Channels must be defined directly here in 'preload.js' either as strings or as constants.
+// Set up logger
+const isDev = process.env.NODE_ENV === "development";
+const logger = {
+  debug: (...args) => isDev && console.debug("[Preload]", ...args),
+  info: (...args) => console.info("[Preload]", ...args),
+  error: (...args) => console.error("[Preload]", ...args),
+};
+
+logger.info("Initializing Preload Script");
+
+// IPC channels that are allowed for communication
 const IPC_CHANNELS = {
   OPEN_FOLDER: "open-folder",
   REQUEST_FILE_LIST: "request-file-list",
@@ -11,7 +19,17 @@ const IPC_CHANNELS = {
   FILE_LIST_DATA: "file-list-data",
   FILE_PROCESSING_STATUS: "file-processing-status",
 };
-// Helper function to ensure data is serializable
+
+// Map to track listeners for proper cleanup
+const listeners = new Map();
+
+// Helper function to generate unique key for listeners
+function getListenerKey(channel, callback) {
+  // Use callback toString to create a somewhat unique identifier
+  return `${channel}:${callback.toString().substring(0, 100)}`;
+}
+
+// Helper function to ensure data is serializable for IPC
 function ensureSerializable(data) {
   if (data === null || data === undefined) {
     return data;
@@ -45,59 +63,80 @@ function ensureSerializable(data) {
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld("electron", {
-  send: (channel, data) => {
-    // whitelist channels
-    const validChannels = [
-      IPC_CHANNELS.OPEN_FOLDER,
-      IPC_CHANNELS.REQUEST_FILE_LIST,
-    ];
-    if (validChannels.includes(channel)) {
-      // Ensure data is serializable before sending
-      const serializedData = ensureSerializable(data);
-      ipcRenderer.send(channel, serializedData);
-    }
-  },
-  receive: (channel, func) => {
-    const validChannels = [
-      IPC_CHANNELS.FOLDER_SELECTED,
-      IPC_CHANNELS.FILE_LIST_DATA,
-      IPC_CHANNELS.FILE_PROCESSING_STATUS,
-    ];
-    if (validChannels.includes(channel)) {
-      // Deliberately strip event as it includes `sender`
-      ipcRenderer.on(channel, (event, ...args) => {
-        // Convert args to serializable form
-        const serializedArgs = args.map(ensureSerializable);
-        func(...serializedArgs);
-      });
-    }
-  },
-  // For backward compatibility (but still ensure serialization)
+  // Flag to check if running in Electron
+  isElectronCheck: true,
+
+  // Modern, consistent API
   ipcRenderer: {
-    send: (channel, data) => {
-      const serializedData = ensureSerializable(data);
-      ipcRenderer.send(channel, serializedData);
-    },
-    on: (channel, func) => {
-      const wrapper = (event, ...args) => {
+    // Add a listener to a channel
+    on: (channel, callback) => {
+      logger.debug(`Adding listener for channel: ${channel}`);
+
+      // Create wrapper that serializes args and handles errors
+      const wrappedCallback = (event, ...args) => {
         try {
-          // Don't pass the event object to the callback, only pass the serialized args
+          logger.debug(`Received event on channel: ${channel}`);
           const serializedArgs = args.map(ensureSerializable);
-          func(...serializedArgs); // Only pass the serialized args, not the event
-        } catch (err) {
-          console.error(`Error in IPC handler for channel ${channel}:`, err);
+          callback(...serializedArgs);
+        } catch (error) {
+          logger.error(`Error in listener for ${channel}:`, error);
         }
       };
-      ipcRenderer.on(channel, wrapper);
-      // Store the wrapper function for removal later
-      return wrapper;
+
+      // Store the mapping between original callback and wrapper
+      const key = getListenerKey(channel, callback);
+      listeners.set(key, wrappedCallback);
+
+      // Register the wrapped listener with Electron
+      ipcRenderer.on(channel, wrappedCallback);
+
+      logger.debug(
+        `Listener added for channel: ${channel}, total listeners: ${listeners.size}`
+      );
     },
-    removeListener: (channel, func) => {
-      try {
-        ipcRenderer.removeListener(channel, func);
-      } catch (err) {
-        console.error(`Error removing listener for channel ${channel}:`, err);
+
+    // Send data to a channel
+    send: (channel, ...args) => {
+      logger.debug(`Sending to channel: ${channel}`);
+      const serializedArgs = args.map(ensureSerializable);
+      ipcRenderer.send(channel, ...serializedArgs);
+    },
+
+    // Remove a listener from a channel
+    removeListener: (channel, callback) => {
+      const key = getListenerKey(channel, callback);
+      const wrappedCallback = listeners.get(key);
+
+      if (wrappedCallback) {
+        logger.debug(`Removing listener for channel: ${channel}`);
+        ipcRenderer.removeListener(channel, wrappedCallback);
+        listeners.delete(key);
+        logger.debug(
+          `Listener removed, remaining listeners: ${listeners.size}`
+        );
+        return true;
+      } else {
+        logger.error(
+          `Could not find wrapper for listener on channel: ${channel}`
+        );
+        if (isDev) {
+          logger.debug(
+            `Available keys: ${Array.from(listeners.keys()).join(", ")}`
+          );
+        }
+        return false;
       }
+    },
+
+    // Diagnostic function to get listener count
+    getListenerCount: (channel) => {
+      let count = 0;
+      listeners.forEach((_, key) => {
+        if (key.startsWith(`${channel}:`)) count++;
+      });
+      return count;
     },
   },
 });
+
+logger.info("Preload Script Initialized Successfully");

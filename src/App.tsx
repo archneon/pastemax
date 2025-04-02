@@ -60,7 +60,14 @@ import {
 } from "./constants";
 import { PromptSectionDefinition } from "./types/promptConfigTypes";
 
-logger.info("App.tsx component function starting");
+// Dodamo števec renderjev za debugging
+let renderCount = 0;
+// Sledimo sejni ID-ju, da ločimo med več naložitvami modula (hot reloading)
+const APP_INSTANCE_ID = Math.random().toString(36).substring(2, 8);
+
+logger.info(
+  `App.tsx component function starting (instance: ${APP_INSTANCE_ID})`
+);
 
 // Access the electron API from the window object
 declare global {
@@ -116,6 +123,11 @@ const categorizeFile = (
 };
 
 const App = () => {
+  // Sledimo številu renderiranj za pomoč pri diagnostiki
+  renderCount++;
+  // Na začetku vsakega renderja zabeležimo podatke za debugging
+  logger.debug(`App render #${renderCount} (instance: ${APP_INSTANCE_ID})`);
+
   // Določimo tip za lastSelectedFolder
   const lastSelectedFolder = getLastSelectedFolder();
   // Uporabimo ustrezno tipizirano začetno vrednost brez eksplicitne tipizacije v useState
@@ -384,14 +396,13 @@ const App = () => {
     [selectedFolder]
   );
 
-  // Obstoječi useEffect za 'file-list-data' listener
-  useEffect(() => {
-    if (!isElectron) return;
-
-    const handleFolderSelected = (folderPath: string) => {
-      // Obstoječa koda - brez sprememb
+  // Premik in stabilizacija handler funkcij z useCallback, izven useEffect
+  const handleFolderSelected = useCallback(
+    (folderPath: string) => {
       if (typeof folderPath === "string") {
-        logger.info("Folder selected:", folderPath);
+        logger.info(
+          `Folder selected: ${folderPath} (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
+        );
         const normalizedPath = normalizePath(folderPath);
 
         // Najprej nastavimo novo izbrano mapo
@@ -420,21 +431,32 @@ const App = () => {
         // Update our request tracking references
         lastRequestedFolder.current = normalizedPath;
 
-        window.electron.ipcRenderer.send("request-file-list", normalizedPath);
+        // Pošljemo zahtevo z novo strukturo
+        window.electron.ipcRenderer.send("request-file-list", {
+          path: normalizedPath,
+          forceRefresh: false,
+        });
 
         // Update recent folders when a new folder is selected
         updateRecentFolders(normalizedPath);
       } else {
-        logger.error("Invalid folder path received:", folderPath);
+        logger.error(
+          `Invalid folder path received: ${folderPath} (render #${renderCount})`
+        );
         setProcessingStatus({
           status: "error",
           message: "Invalid folder path received",
         });
       }
-    };
+    },
+    [updateRecentFolders, loadInitialState]
+  );
 
-    const handleFileListData = (receivedFiles: FileData[]) => {
-      logger.info("Received file list data:", receivedFiles.length, "files");
+  const handleFileListData = useCallback(
+    (receivedFiles: FileData[]) => {
+      logger.info(
+        `Received file list data: ${receivedFiles.length} files (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
+      );
 
       // POMEMBNO: Ponovno naložimo project state pred uporabo prejetih datotek
       // To zagotovi, da imamo najnovejše vrednosti vseh nastavitev po Force Reload
@@ -449,11 +471,9 @@ const App = () => {
         setFileListView(currentState.fileListView);
         setIncludeFileTree(currentState.includeFileTree);
         setIncludePromptOverview(currentState.includePromptOverview);
-        logger.info("Ponovno naloženo stanje iz localStorage:", {
-          selectedFiles: currentState.selectedFiles.length,
-          includeFileTree: currentState.includeFileTree,
-          includePromptOverview: currentState.includePromptOverview,
-        });
+        logger.info(
+          `Ponovno naloženo stanje iz localStorage: {selectedFiles: ${currentState.selectedFiles.length}, includeFileTree: ${currentState.includeFileTree}, includePromptOverview: ${currentState.includePromptOverview}} (render #${renderCount})`
+        );
       }
 
       // Nadaljujemo z običajno obdelavo prejetih datotek
@@ -467,46 +487,94 @@ const App = () => {
         message: `Found ${categorizedFiles.length} files`,
       });
       applyFiltersAndSort(categorizedFiles, sortOrder, searchTerm);
-    };
+      logger.debug(
+        `Building file tree from ${categorizedFiles.length} files (render #${renderCount})`
+      );
+    },
+    [
+      selectedFolder,
+      sortOrder,
+      searchTerm,
+      applyFiltersAndSort,
+      loadInitialState,
+    ]
+  );
 
-    // Ostali del useEffect-a ostane enak
-    const handleProcessingStatus = (status: {
+  const handleProcessingStatus = useCallback(
+    (status: {
       status: "idle" | "processing" | "complete" | "error";
       message: string;
     }) => {
-      logger.info("Processing status:", status);
+      logger.info(
+        `Processing status: ${JSON.stringify(
+          status
+        )} (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
+      );
       setProcessingStatus(status);
-    };
+    },
+    []
+  );
 
-    window.electron.ipcRenderer.on("folder-selected", handleFolderSelected);
-    window.electron.ipcRenderer.on("file-list-data", handleFileListData);
-    window.electron.ipcRenderer.on(
-      "file-processing-status",
-      handleProcessingStatus
+  // Obstoječi useEffect za IPC listener - zdaj samo registrira/odregistrira callbacke
+  // in uporabljamo referenco na en sam poslušalec za vsak kanal
+  useEffect(() => {
+    if (!isElectron) return;
+
+    // Dodamo informacije za debugging
+    logger.debug(
+      `Setting up IPC listeners (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
     );
 
+    // Nastavimo reference na vse naše poslušalce
+    // React StrictMode je izklopljen, vendar za vsak primer uporabimo iste reference
+    const folderSelectedHandler = handleFolderSelected;
+    const fileListDataHandler = handleFileListData;
+    const processingStatusHandler = handleProcessingStatus;
+
+    // Registriramo vse poslušalce
+    logger.debug("Registracija IPC listenerjev - začetek");
+    window.electron.ipcRenderer.on("folder-selected", folderSelectedHandler);
+    logger.debug("Registrirali IPC listener: folder-selected");
+
+    window.electron.ipcRenderer.on("file-list-data", fileListDataHandler);
+    logger.debug("Registrirali IPC listener: file-list-data");
+
+    window.electron.ipcRenderer.on(
+      "file-processing-status",
+      processingStatusHandler
+    );
+    logger.debug("Registrirali IPC listener: file-processing-status");
+    logger.debug("Registracija IPC listenerjev - zaključek");
+
+    // Čistilna funkcija - odstrani poslušalce
     return () => {
+      logger.debug(
+        `Cleaning up IPC listeners (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
+      );
+
       window.electron.ipcRenderer.removeListener(
         "folder-selected",
-        handleFolderSelected
+        folderSelectedHandler
       );
+      logger.debug("Odstranjen IPC listener: folder-selected");
+
       window.electron.ipcRenderer.removeListener(
         "file-list-data",
-        handleFileListData
+        fileListDataHandler
       );
+      logger.debug("Odstranjen IPC listener: file-list-data");
+
       window.electron.ipcRenderer.removeListener(
         "file-processing-status",
-        handleProcessingStatus
+        processingStatusHandler
       );
+      logger.debug("Odstranjen IPC listener: file-processing-status");
     };
   }, [
     isElectron,
-    sortOrder,
-    searchTerm,
-    applyFiltersAndSort,
-    updateRecentFolders,
-    loadInitialState,
-    selectedFolder,
+    handleFolderSelected,
+    handleFileListData,
+    handleProcessingStatus,
   ]);
 
   // Persist selected folder when it changes
@@ -560,28 +628,70 @@ const App = () => {
 
   // Load initial data from saved folder
   useEffect(() => {
-    if (!isElectron || !selectedFolder) return;
-
-    // Prevent duplicate loading
-    if (
-      initialLoadTriggered.current &&
-      lastRequestedFolder.current === selectedFolder
-    ) {
-      logger.debug("Skipping duplicate load for folder:", selectedFolder);
+    if (!isElectron || !selectedFolder) {
+      logger.debug(
+        `Not loading initial folder data - isElectron: ${isElectron}, selectedFolder: ${
+          selectedFolder || "null"
+        }`
+      );
       return;
     }
 
-    logger.info("Loading saved folder on startup:", selectedFolder);
+    // Preveri, če je bilo zahtevano ponovno nalaganje (po CTRL+R)
+    const wasRefreshRequested =
+      localStorage.getItem("__force_refresh_requested") === "true";
+    if (wasRefreshRequested) {
+      logger.info(
+        `Detected page refresh, will force reload folder: ${selectedFolder}`
+      );
+      // Odstrani zastavico, da ne povzroči dodatnih ponovnih nalaganj
+      localStorage.removeItem("__force_refresh_requested");
+    }
+
+    // Dodamo diagnostične informacije
+    logger.debug(
+      `Initial folder loading effect (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
+    );
+    logger.debug(
+      `initialLoadTriggered: ${
+        initialLoadTriggered.current
+      }, lastRequestedFolder: ${
+        lastRequestedFolder.current || "null"
+      }, forceRefresh: ${wasRefreshRequested}`
+    );
+
+    // Prevent duplicate loading, RAZEN če je bil zahtevan force refresh
+    if (
+      initialLoadTriggered.current &&
+      lastRequestedFolder.current === selectedFolder &&
+      !wasRefreshRequested
+    ) {
+      logger.debug(
+        `Skipping duplicate load for folder: ${selectedFolder} (render #${renderCount})`
+      );
+      return;
+    }
+
+    logger.info(
+      `Loading saved folder on startup: ${selectedFolder} (render #${renderCount})`
+    );
     setProcessingStatus({
       status: "processing",
-      message: "Loading files from previously selected folder...",
+      message: wasRefreshRequested
+        ? "Reloading folder after page refresh..."
+        : "Loading files from previously selected folder...",
     });
 
     // Mark this folder as requested
     initialLoadTriggered.current = true;
     lastRequestedFolder.current = selectedFolder;
 
-    window.electron.ipcRenderer.send("request-file-list", selectedFolder);
+    // Pošljemo zahtevo za seznam datotek z ustrezno strukturo
+    logger.debug(`Sending initial request-file-list for ${selectedFolder}`);
+    window.electron.ipcRenderer.send("request-file-list", {
+      path: selectedFolder,
+      forceRefresh: wasRefreshRequested,
+    });
 
     // Update recent folders when loading initial folder
     updateRecentFolders(selectedFolder);
@@ -598,7 +708,7 @@ const App = () => {
   };
 
   // Toggle file selection
-  const toggleFileSelection = (filePath: string) => {
+  const toggleFileSelection = useCallback((filePath: string) => {
     // Normalize the incoming file path to handle cross-platform issues
     const normalizedPath = normalizePath(filePath);
 
@@ -620,140 +730,193 @@ const App = () => {
         return newSelection;
       }
     });
-  };
+  }, []);
 
   // Toggle folder selection (select/deselect all files in folder)
-  const toggleFolderSelection = (folderPath: string, isSelected: boolean) => {
-    // Normalize the folder path
-    const normalizedFolderPath = normalizePath(folderPath);
+  const toggleFolderSelection = useCallback(
+    (folderPath: string, isSelected: boolean) => {
+      // Normalize the folder path
+      const normalizedFolderPath = normalizePath(folderPath);
 
-    const filesInFolder = allFiles.filter(
-      (file: FileData) =>
-        normalizePath(file.path).startsWith(normalizedFolderPath) &&
-        !file.isBinary &&
-        !file.isSkipped
-    );
-
-    if (isSelected) {
-      // Add all files from this folder that aren't already selected
-      const filePaths = filesInFolder.map((file: FileData) =>
-        normalizePath(file.path)
+      const filesInFolder = allFiles.filter(
+        (file: FileData) =>
+          normalizePath(file.path).startsWith(normalizedFolderPath) &&
+          !file.isBinary &&
+          !file.isSkipped
       );
 
-      setSelectedFiles((prev: string[]) => {
-        const newSelection = [...prev];
-        filePaths.forEach((path: string) => {
-          if (!newSelection.some((p) => arePathsEqual(p, path))) {
-            newSelection.push(path);
-          }
-        });
-        return newSelection;
-      });
-    } else {
-      // Remove all files from this folder
-      setSelectedFiles((prev: string[]) => {
-        const newSelection = prev.filter(
-          (path: string) =>
-            !filesInFolder.some((file: FileData) =>
-              arePathsEqual(normalizePath(file.path), path)
-            )
+      if (isSelected) {
+        // Add all files from this folder that aren't already selected
+        const filePaths = filesInFolder.map((file: FileData) =>
+          normalizePath(file.path)
         );
-        return newSelection;
-      });
-    }
-  };
+
+        setSelectedFiles((prev: string[]) => {
+          const newSelection = [...prev];
+          filePaths.forEach((path: string) => {
+            if (!newSelection.some((p) => arePathsEqual(p, path))) {
+              newSelection.push(path);
+            }
+          });
+          return newSelection;
+        });
+      } else {
+        // Remove all files from this folder
+        setSelectedFiles((prev: string[]) => {
+          const newSelection = prev.filter(
+            (path: string) =>
+              !filesInFolder.some((file: FileData) =>
+                arePathsEqual(normalizePath(file.path), path)
+              )
+          );
+          return newSelection;
+        });
+      }
+    },
+    [allFiles]
+  );
 
   // Generic function for refresh/reload behavior (preserves selection)
-  const refreshOrReloadFolder = (action: "refresh" | "reload") => {
-    if (!selectedFolder || !isElectron) return;
+  const refreshOrReloadFolder = useCallback(
+    (action: "refresh" | "reload") => {
+      if (!selectedFolder || !isElectron) return;
 
-    logger.info(
-      `${
-        action === "refresh" ? "Refreshing" : "Reloading"
-      } folder: ${selectedFolder}`
-    );
-    setProcessingStatus({
-      status: "processing",
-      message: `${action === "refresh" ? "Refreshing" : "Reloading"} folder...`,
-    });
-
-    // Pomembno: shranimo trenutno stanje izbranih datotek
-    const selectionToPreserve = [...selectedFiles];
-
-    // Definiramo listener za trenutno osvežitev/ponovno nalaganje
-    const handleDataForRefresh = (
-      data: FileData[] | { files: FileData[]; totalTokenCount: number }
-    ) => {
-      // Podprimo obe strukturi - array ali objekt s files poljem
-      const receivedFiles = Array.isArray(data) ? data : data.files;
-
-      logger.info(`Received data for ${action}: ${receivedFiles.length} files`);
-
-      // Kategoriziraj datoteke - podobno kot v handleFileListData
-      const categorizedFiles = receivedFiles.map((file) => ({
-        ...file,
-        sectionId: categorizeFile(file, selectedFolder, PROMPT_SECTIONS),
-      }));
-
-      // Obnovimo izbiro na podlagi shranjenih datotek in novega seznama datotek
-      const validPaths = new Set(
-        categorizedFiles.map((f) => normalizePath(f.path))
+      logger.info(
+        `${
+          action === "refresh" ? "Refreshing" : "Reloading"
+        } folder: ${selectedFolder}`
       );
-      const restoredSelection = selectionToPreserve.filter((p) =>
-        validPaths.has(normalizePath(p))
-      );
-
-      setAllFiles(categorizedFiles);
-      applyFiltersAndSort(categorizedFiles, sortOrder, searchTerm);
-      setSelectedFiles(restoredSelection);
-
       setProcessingStatus({
-        status: "complete",
-        message: `Folder ${action === "refresh" ? "refreshed" : "reloaded"}`,
+        status: "processing",
+        message: `${
+          action === "refresh" ? "Refreshing" : "Reloading"
+        } folder...`,
       });
 
-      // Odstranimo listener po uporabi
-      window.electron.ipcRenderer.removeListener(
-        "file-list-data",
-        handleDataForRefresh
+      // Pomembno: shranimo trenutno stanje izbranih datotek
+      const selectionToPreserve = [...selectedFiles];
+
+      // Generiramo unikatni ID za to operacijo za boljše sledenje
+      const operationId = Date.now().toString(36);
+      logger.debug(`Starting ${action} operation (ID: ${operationId})`);
+
+      // Definiramo listener za trenutno osvežitev/ponovno nalaganje
+      const handleDataForRefresh = (
+        data: FileData[] | { files: FileData[]; totalTokenCount: number }
+      ) => {
+        // Podprimo obe strukturi - array ali objekt s files poljem
+        const receivedFiles = Array.isArray(data) ? data : data.files;
+
+        logger.info(
+          `Received data for ${action} operation (ID: ${operationId}): ${receivedFiles.length} files`
+        );
+
+        // Kategoriziraj datoteke - podobno kot v handleFileListData
+        const categorizedFiles = receivedFiles.map((file) => ({
+          ...file,
+          sectionId: categorizeFile(file, selectedFolder, PROMPT_SECTIONS),
+        }));
+
+        // Obnovimo izbiro na podlagi shranjenih datotek in novega seznama datotek
+        const validPaths = new Set(
+          categorizedFiles.map((f) => normalizePath(f.path))
+        );
+        const restoredSelection = selectionToPreserve.filter((p) =>
+          validPaths.has(normalizePath(p))
+        );
+
+        setAllFiles(categorizedFiles);
+        applyFiltersAndSort(categorizedFiles, sortOrder, searchTerm);
+        setSelectedFiles(restoredSelection);
+
+        setProcessingStatus({
+          status: "complete",
+          message: `Folder ${
+            action === "refresh" ? "refreshed" : "reloaded"
+          } successfully`,
+        });
+
+        // Odstranimo listener po uporabi
+        logger.debug(
+          `Removing temporary listener for ${action} operation (ID: ${operationId})`
+        );
+        window.electron.ipcRenderer.removeListener(
+          "file-list-data",
+          handleDataForRefresh
+        );
+        logger.debug(
+          `Listener for ${action} operation removed (ID: ${operationId})`
+        );
+      };
+
+      // Dodamo listener preden pošljemo zahtevo
+      logger.debug(
+        `Adding temporary listener for ${action} operation (ID: ${operationId})`
       );
-    };
+      window.electron.ipcRenderer.on("file-list-data", handleDataForRefresh);
+      logger.debug(
+        `Listener for ${action} operation added (ID: ${operationId})`
+      );
 
-    // Dodamo listener preden pošljemo zahtevo
-    window.electron.ipcRenderer.on("file-list-data", handleDataForRefresh);
+      // Update request tracking reference
+      lastRequestedFolder.current = selectedFolder;
 
-    // Update request tracking reference
-    lastRequestedFolder.current = selectedFolder;
+      // Zahtevamo osvežitev seznama datotek - zdaj vedno pošljemo forceRefresh=true
+      logger.debug(
+        `Sending request-file-list with forceRefresh=true for ${action} operation (ID: ${operationId})`
+      );
+      window.electron.ipcRenderer.send("request-file-list", {
+        path: selectedFolder,
+        forceRefresh: true,
+      });
+    },
+    [
+      selectedFolder,
+      isElectron,
+      selectedFiles,
+      sortOrder,
+      searchTerm,
+      applyFiltersAndSort,
+    ]
+  );
 
-    // Zahtevamo osvežitev seznama datotek
-    window.electron.ipcRenderer.send("request-file-list", selectedFolder);
-  };
-
-  const refreshFolder = () => refreshOrReloadFolder("refresh");
-  const reloadFolder = () => refreshOrReloadFolder("reload");
+  const refreshFolder = useCallback(
+    () => refreshOrReloadFolder("refresh"),
+    [refreshOrReloadFolder]
+  );
+  const reloadFolder = useCallback(
+    () => refreshOrReloadFolder("reload"),
+    [refreshOrReloadFolder]
+  );
 
   // Handle sort change
-  const handleSortChange = (newSort: string) => {
-    setSortOrder(newSort);
-    applyFiltersAndSort(allFiles, newSort, searchTerm);
-    setSortDropdownOpen(false); // Close dropdown after selection
-  };
+  const handleSortChange = useCallback(
+    (newSort: string) => {
+      setSortOrder(newSort);
+      applyFiltersAndSort(allFiles, newSort, searchTerm);
+      setSortDropdownOpen(false); // Close dropdown after selection
+    },
+    [allFiles, searchTerm, applyFiltersAndSort]
+  );
 
   // Handle search change
-  const handleSearchChange = (newSearch: string) => {
-    setSearchTerm(newSearch);
-    applyFiltersAndSort(allFiles, sortOrder, newSearch);
-  };
+  const handleSearchChange = useCallback(
+    (newSearch: string) => {
+      setSearchTerm(newSearch);
+      applyFiltersAndSort(allFiles, sortOrder, newSearch);
+    },
+    [allFiles, sortOrder, applyFiltersAndSort]
+  );
 
   // Handle view change
-  const handleViewChange = (newView: "structured" | "flat") => {
+  const handleViewChange = useCallback((newView: "structured" | "flat") => {
     setFileListView(newView);
-  };
+  }, []);
 
   // Toggle sort dropdown
-  const toggleSortDropdown = () => {
+  const toggleSortDropdown = useCallback(() => {
     setSortDropdownOpen(!sortDropdownOpen);
-  };
+  }, [sortDropdownOpen]);
 
   // Calculate total tokens from selected files
   const calculateTotalTokens = () => {
@@ -764,29 +927,26 @@ const App = () => {
   };
 
   // Handle select all files
-  const selectAllFiles = () => {
-    const selectablePaths = displayedFiles
-      .filter((file: FileData) => !file.isBinary && !file.isSkipped)
-      .map((file: FileData) => file.path);
+  const selectAllFiles = useCallback(() => {
+    // Only select files that are not binary and not skipped
+    const selectableFiles = allFiles.filter(
+      (file: FileData) => !file.isBinary && !file.isSkipped
+    );
 
-    setSelectedFiles((prev: string[]) => {
-      const newSelection = [...prev];
-      selectablePaths.forEach((path: string) => {
-        if (!newSelection.includes(path)) {
-          newSelection.push(path);
-        }
-      });
-      return newSelection;
-    });
-  };
+    // Get paths of all selectable files
+    const allPaths = selectableFiles.map((file: FileData) =>
+      normalizePath(file.path)
+    );
+
+    // Set selected files to all selectable files
+    setSelectedFiles(allPaths);
+  }, [allFiles]);
 
   // Handle deselect all files
-  const deselectAllFiles = () => {
-    const displayedPaths = displayedFiles.map((file: FileData) => file.path);
-    setSelectedFiles((prev: string[]) =>
-      prev.filter((path: string) => !displayedPaths.includes(path))
-    );
-  };
+  const deselectAllFiles = useCallback(() => {
+    // Clear all selected files
+    setSelectedFiles([]);
+  }, []);
 
   // Sort options for the dropdown
   const sortOptions = [
@@ -871,8 +1031,11 @@ const App = () => {
     // Update request tracking reference
     lastRequestedFolder.current = folderPath;
 
-    // Zahtevamo seznam datotek
-    window.electron.ipcRenderer.send("request-file-list", folderPath);
+    // Zahtevamo seznam datotek z novo strukturo
+    window.electron.ipcRenderer.send("request-file-list", {
+      path: folderPath,
+      forceRefresh: false,
+    });
 
     // Posodobimo seznam nedavnih map
     updateRecentFolders(folderPath);
@@ -889,7 +1052,7 @@ const App = () => {
   };
 
   // Handle exit from the current folder
-  const handleExitFolder = () => {
+  const handleExitFolder = useCallback(() => {
     // Ponastavimo vse na začetne vrednosti
     saveLastSelectedFolder(null);
     setSelectedFolder(null);
@@ -907,7 +1070,7 @@ const App = () => {
     setAllFiles([]);
     setDisplayedFiles([]);
     setProcessingStatus({ status: "idle", message: "" });
-  };
+  }, [loadInitialState]);
 
   // Handle clicks outside of sort dropdown
   useEffect(() => {
@@ -962,11 +1125,20 @@ const App = () => {
                   <div className="recent-folders-title">Recent folders</div>
                   <ul className="recent-folders-list">
                     {recentFolders.map((folderPath: string, index: number) => (
-                      <button
+                      <div
                         key={index}
                         className="recent-folder-item"
                         onClick={() => selectRecentFolder(folderPath)}
                         title={folderPath}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            selectRecentFolder(folderPath);
+                          }
+                        }}
+                        aria-label={`Open folder: ${basename(folderPath)}`}
                       >
                         <div className="recent-folder-content">
                           <span className="recent-folder-name">
@@ -980,10 +1152,13 @@ const App = () => {
                           className="recent-folder-delete"
                           onClick={(e) => removeRecentFolder(folderPath, e)}
                           title="Remove from recent folders"
+                          aria-label={`Remove ${basename(
+                            folderPath
+                          )} from recent folders`}
                         >
                           <X size={16} />
                         </button>
-                      </button>
+                      </div>
                     ))}
                   </ul>
                 </div>
