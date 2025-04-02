@@ -1,3 +1,9 @@
+Pozdravljen Cursor Agent! :) Z Gemini 2.5 modelom sva pregledala celotno kodo, ker ima moznost ogromnega contexta in
+sva izdelala plan za implementacijo. Ti imas seveda svojo lastno logiko in inteligenco, kar pomeni, da dobro preglej
+njegovo implementacijo. Mislim da je njegova implementacija dobra, vendar pa ce bos slucajno kje videl kaksne napake
+ali moznosti za izboljsavo, jo lahko izboljsas. Predvsem pa je pomembno, da bo zadeva po koncani implementacij delovala
+pravilno.
+
 ## **Instructions for PasteMax Refactoring: Simplified Structured Prompt Output & UI (Convention-Based)**
 
 **1. Goal Recap**
