@@ -1,8 +1,33 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import logger from "../utils/logger";
 import { SidebarProps, TreeNode } from "../types/FileTypes";
 import { MouseEventType, UseStateType } from "../types/ReactTypes";
 import SearchBar from "./SearchBar";
 import TreeItem from "./TreeItem";
+import {
+  FolderTree,
+  FileText,
+  X,
+  FolderOpen,
+  RefreshCw,
+  Search,
+  ChevronRight,
+  ChevronDown,
+  CheckSquare,
+  Square,
+  Copy,
+  List,
+  Package,
+  File,
+  RotateCcw,
+} from "lucide-react";
+import { FileData } from "../types/FileTypes";
+import {
+  basename,
+  getRelativePath,
+  comparePaths,
+  comparePathsStructurally,
+} from "../utils/pathUtils";
 
 const Sidebar = ({
   selectedFolder,
@@ -67,7 +92,7 @@ const Sidebar = ({
     }
 
     const buildTree = () => {
-      console.log("Building file tree from", allFiles.length, "files");
+      logger.info("Building file tree from", allFiles.length, "files");
       setIsTreeBuildingComplete(false);
 
       try {
@@ -203,7 +228,7 @@ const Sidebar = ({
         setFileTree(sortedTree);
         setIsTreeBuildingComplete(true);
       } catch (err) {
-        console.error("Error building file tree:", err);
+        logger.error("Error building file tree:", err);
         setFileTree([]);
         setIsTreeBuildingComplete(true);
       }

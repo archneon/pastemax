@@ -1,13 +1,20 @@
 import React, { useState } from "react";
+import logger from "../utils/logger";
 import { Copy, Check } from "lucide-react";
 
 interface CopyButtonProps {
   text: string;
   className?: string;
   children?: JSX.Element | string;
+  onCopy?: () => void;
 }
 
-const CopyButton = ({ text, className = "", children }: CopyButtonProps) => {
+const CopyButton = ({
+  text,
+  className = "",
+  children,
+  onCopy,
+}: CopyButtonProps) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -18,9 +25,10 @@ const CopyButton = ({ text, className = "", children }: CopyButtonProps) => {
       // Reset the copied state after 2 seconds
       setTimeout(() => {
         setCopied(false);
+        if (onCopy) onCopy();
       }, 2000);
     } catch (err) {
-      console.error("Failed to copy:", err);
+      logger.error("Failed to copy:", err);
     }
   };
 

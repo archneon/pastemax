@@ -9,6 +9,7 @@ const {
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const log = require("electron-log");
 const {
   IPC_CHANNELS,
   MAX_FILE_SIZE,
@@ -18,13 +19,58 @@ const {
   PROJECT_TREE_CONFIG,
 } = require("./constants");
 
+// Determine if running in development or production
+const isDev = process.env.NODE_ENV === "development";
+
+// --- Configure electron-log ---
+// === CONSOLE TRANSPORT ===
+// Log to console: 'debug' level in development, 'info' level in production.
+log.transports.console.level = isDev ? "debug" : "info";
+// Add context info about which process is logging
+log.transports.console.format =
+  "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [Main] [{level}] {text}";
+
+// === FILE TRANSPORT (DISABLED) ===
+// Disable file logging for now by setting level to false.
+// To enable later, set a level like 'info', 'warn', or 'error'.
+log.transports.file.level = false;
+// Example of future enabling: log.transports.file.level = 'info';
+// Optional: Customize file path when enabled later
+// log.transports.file.resolvePath = () => path.join(app.getPath('userData'), 'logs', 'main.log');
+
+// === NOTE ABOUT RENDERER LOGGING ===
+// The current implementation uses a custom wrapper in the renderer process
+// (src/utils/logger.ts) that emits logs directly to the console with a "[Renderer]" prefix.
+// It doesn't send logs to the main process. This approach was chosen to avoid
+// cross-process initialization issues with electron-log.
+// If you want to enable file logging in the future, you'll need to modify the renderer
+// logger to use IPC to send logs to the main process.
+
+// === ERROR HANDLING ===
+// Catch unhandled errors/rejections from the main process
+log.errorHandler.startCatching({
+  showDialog: !isDev, // Only show error dialog in production
+});
+
+// === (Optional but Recommended) OVERRIDE CONSOLE METHODS ===
+// Redirect standard console.log/warn/error calls to electron-log
+// This makes logging consistent even if some old console calls remain.
+Object.assign(console, log.functions);
+// --- End electron-log Configuration ---
+
+// Initial confirmation logs (will now use electron-log via console override)
+log.info("Main process started.");
+log.info(
+  `electron-log configured. Console level: ${log.transports.console.level}, File level: ${log.transports.file.level}`
+);
+
 // Add handling for the 'ignore' module
 let ignore;
 try {
   ignore = require("ignore");
-  console.log("Successfully loaded ignore module");
+  log.debug("Successfully loaded ignore module");
 } catch (err) {
-  console.error("Failed to load ignore module:", err);
+  log.error("Failed to load ignore module:", err);
   // Simple fallback implementation for when the ignore module fails to load
   ignore = {
     // Simple implementation that just matches exact paths
@@ -32,7 +78,7 @@ try {
       return (path) => !excludedFiles.includes(path);
     },
   };
-  console.log("Using fallback for ignore module");
+  log.info("Using fallback for ignore module");
 }
 
 /**
@@ -55,9 +101,9 @@ function getPathSeparator() {
 let tiktoken;
 try {
   tiktoken = require("tiktoken");
-  console.log("Successfully loaded tiktoken module");
+  log.debug("Successfully loaded tiktoken module");
 } catch (err) {
-  console.error("Failed to load tiktoken module:", err);
+  log.error("Failed to load tiktoken module:", err);
   tiktoken = null;
 }
 
@@ -69,14 +115,14 @@ let encoder;
 try {
   if (tiktoken) {
     encoder = tiktoken.get_encoding("o200k_base"); // gpt-4o encoding
-    console.log("Tiktoken encoder initialized successfully");
+    log.debug("Tiktoken encoder initialized successfully");
   } else {
     throw new Error("Tiktoken module not available");
   }
 } catch (err) {
-  console.error("Failed to initialize tiktoken encoder:", err);
+  log.error("Failed to initialize tiktoken encoder:", err);
   // Fallback to a simpler method if tiktoken fails
-  console.log("Using fallback token counter");
+  log.info("Using fallback token counter");
   encoder = null;
 }
 
@@ -132,6 +178,7 @@ const BINARY_EXTENSIONS = [
 ].concat(binaryExtensions || []); // Add any additional binary extensions from excluded-files.js
 
 function createWindow() {
+  log.debug("Creating main window...");
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -147,6 +194,8 @@ function createWindow() {
     },
   });
 
+  log.debug("Main window created, setting up event handlers...");
+
   // In development, load from Vite dev server
   // In production, load from built files
   const isDev = process.env.NODE_ENV === "development";
@@ -154,16 +203,18 @@ function createWindow() {
     // Use the URL provided by the dev script, or fall back to default
     const startUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
     // Wait a moment for dev server to be ready
+    log.debug(`Will load from dev server: ${startUrl} after short delay...`);
     setTimeout(() => {
       // Clear any cached data to prevent redirection loops
       mainWindow.webContents.session.clearCache().then(() => {
+        log.debug("Cache cleared, loading URL...");
         mainWindow.loadURL(startUrl);
         // Open DevTools in development mode with options to reduce warnings
         if (mainWindow.webContents.isDevToolsOpened()) {
           mainWindow.webContents.closeDevTools();
         }
         mainWindow.webContents.openDevTools({ mode: "detach" });
-        console.log(`Loading from dev server at ${startUrl}`);
+        log.debug(`Loading from dev server at ${startUrl}`);
       });
     }, 500);
 
@@ -186,7 +237,7 @@ function createWindow() {
     });
   } else {
     const indexPath = path.join(__dirname, "dist", "index.html");
-    console.log(`Loading from built files at ${indexPath}`);
+    log.info(`Loading from built files at ${indexPath}`);
 
     // Use loadURL with file protocol for better path resolution
     const indexUrl = `file://${indexPath}`;
@@ -197,10 +248,10 @@ function createWindow() {
   mainWindow.webContents.on(
     "did-fail-load",
     (event, errorCode, errorDescription, validatedURL) => {
-      console.error(
+      log.error(
         `Failed to load the application: ${errorDescription} (${errorCode})`
       );
-      console.error(`Attempted to load URL: ${validatedURL}`);
+      log.error(`Attempted to load URL: ${validatedURL}`);
 
       if (isDev) {
         const retryUrl =
@@ -217,20 +268,69 @@ function createWindow() {
       }
     }
   );
+
+  // Debug event handlers
+  mainWindow.webContents.on("did-finish-load", () => {
+    log.debug("Main window finished loading content");
+  });
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (event, errorCode, errorDescription) => {
+      log.error(`Load failed: ${errorDescription} (${errorCode})`);
+    }
+  );
+
+  mainWindow.webContents.on("crashed", () => {
+    log.error("Renderer process crashed");
+  });
+
+  mainWindow.on("unresponsive", () => {
+    log.error("Window became unresponsive");
+  });
+
+  mainWindow.on("responsive", () => {
+    log.debug("Window became responsive again");
+  });
+
+  mainWindow.on("closed", () => {
+    log.debug("Main window was closed");
+  });
+
+  return mainWindow;
 }
 
 app.whenReady().then(() => {
+  log.debug("App ready, creating window...");
   createWindow();
 
   app.on("activate", () => {
+    log.debug("App activated");
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on("window-all-closed", () => {
+  log.debug("All windows closed");
   if (process.platform !== "darwin") {
+    log.debug("Quitting app because all windows are closed (not macOS)");
     app.quit();
   }
+});
+
+// Add more app event handlers for debugging
+app.on("quit", (event, exitCode) => {
+  log.debug(`App is quitting with exit code: ${exitCode}`);
+});
+
+app.on("will-quit", (event) => {
+  log.debug("App will quit");
+});
+
+app.on("render-process-gone", (event, webContents, details) => {
+  log.error(
+    `Renderer process gone: ${details.reason}, killed: ${details.exitCode}`
+  );
 });
 
 // Handle folder selection
@@ -244,10 +344,10 @@ ipcMain.on(IPC_CHANNELS.OPEN_FOLDER, async (event) => {
     try {
       // Ensure we're only sending a string, not an object
       const pathString = String(selectedPath);
-      console.log("Sending folder-selected event with path:", pathString);
+      log.info("Sending folder-selected event with path:", pathString);
       event.sender.send(IPC_CHANNELS.FOLDER_SELECTED, pathString);
     } catch (err) {
-      console.error("Error sending folder-selected event:", err);
+      log.error("Error sending folder-selected event:", err);
       // Try a more direct approach as a fallback
       event.sender.send(IPC_CHANNELS.FOLDER_SELECTED, String(selectedPath));
     }
@@ -291,7 +391,7 @@ function countTokens(text) {
     const tokens = encoder.encode(text);
     return tokens.length;
   } catch (err) {
-    console.error("Error counting tokens:", err);
+    log.error("Error counting tokens:", err);
     // Fallback to character-based estimation on error
     return Math.ceil(text.length / 4);
   }
@@ -455,7 +555,7 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
           });
         }
       } catch (err) {
-        console.error(`Error reading file ${fullPath}:`, err);
+        log.error(`Error reading file ${fullPath}:`, err);
         results.push({
           name: dirent.name,
           path: fullPath,
@@ -468,7 +568,7 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
       }
     });
   } catch (err) {
-    console.error(`Error reading directory ${dir}:`, err);
+    log.error(`Error reading directory ${dir}:`, err);
   }
 
   return results;
@@ -477,9 +577,9 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
 // Handle file list request
 ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
   try {
-    console.log("Processing file list for folder:", folderPath);
-    console.log("OS platform:", os.platform());
-    console.log("Path separator:", getPathSeparator());
+    log.info("Processing file list for folder:", folderPath);
+    log.info("OS platform:", os.platform());
+    log.info("Path separator:", getPathSeparator());
 
     // Send initial progress update
     event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
@@ -490,7 +590,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
     // Process files in chunks to avoid blocking the UI
     const processFiles = () => {
       const files = readFilesRecursively(folderPath, folderPath);
-      console.log(`Found ${files.length} files in ${folderPath}`);
+      log.info(`Found ${files.length} files in ${folderPath}`);
 
       // Update with processing complete status
       event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
@@ -528,7 +628,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
       });
 
       try {
-        console.log(`Sending ${serializableFiles.length} files to renderer`);
+        log.info(`Sending ${serializableFiles.length} files to renderer`);
         // Log a sample of description/overview files found
         const specialFiles = serializableFiles.filter(
           (f) =>
@@ -537,13 +637,13 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
             f.isProjectTreeDescription
         );
         if (specialFiles.length > 0) {
-          console.log(
+          log.info(
             `Found ${specialFiles.length} special description/overview files:`
           );
           specialFiles
             .slice(0, 5)
             .forEach((f) =>
-              console.log(
+              log.info(
                 `- ${f.path} (Overview: ${f.isOverviewTemplate}, DescFor: ${f.descriptionForSectionId}, TreeDesc: ${f.isProjectTreeDescription})`
               )
             );
@@ -551,7 +651,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
 
         event.sender.send(IPC_CHANNELS.FILE_LIST_DATA, serializableFiles);
       } catch (sendErr) {
-        console.error("Error sending file data:", sendErr);
+        log.error("Error sending file data:", sendErr);
 
         // If sending fails, try again with minimal data
         const minimalFiles = serializableFiles.map((file) => ({
@@ -577,7 +677,7 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
     // Use setTimeout to allow UI to update before processing starts
     setTimeout(processFiles, 100);
   } catch (err) {
-    console.error("Error processing file list:", err);
+    log.error("Error processing file list:", err);
     event.sender.send(IPC_CHANNELS.FILE_PROCESSING_STATUS, {
       status: "error",
       message: `Error: ${err.message}`,
@@ -597,5 +697,5 @@ function shouldExcludeByDefault(filePath, rootDir) {
 
 // Add a debug handler for file selection
 ipcMain.on("debug-file-selection", (event, data) => {
-  console.log("DEBUG - File Selection:", data);
+  log.info("DEBUG - File Selection:", data);
 });

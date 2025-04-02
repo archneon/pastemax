@@ -14,6 +14,7 @@ import { FileData } from "./types/FileTypes";
 import { ThemeProvider } from "./context/ThemeContext";
 import ThemeToggle from "./components/ThemeToggle";
 import FileListToggle from "./components/FileListToggle";
+import logger from "./utils/logger";
 import {
   generateAsciiFileTree,
   normalizePath,
@@ -59,7 +60,7 @@ import {
 } from "./constants";
 import { PromptSectionDefinition } from "./types/promptConfigTypes";
 
-console.log("--- App.tsx component function starting ---");
+logger.info("App.tsx component function starting");
 
 // Access the electron API from the window object
 declare global {
@@ -119,6 +120,10 @@ const App = () => {
   const lastSelectedFolder = getLastSelectedFolder();
   // Uporabimo ustrezno tipizirano začetno vrednost brez eksplicitne tipizacije v useState
   const [selectedFolder, setSelectedFolder] = useState(lastSelectedFolder);
+
+  // Reference za sledenje zahtevam za nalaganje datotek
+  const initialLoadTriggered = useRef(false);
+  const lastRequestedFolder = useRef(null);
 
   // Naloži začetno stanje za trenutno izbrano mapo
   const initialState = loadInitialState(selectedFolder);
@@ -386,7 +391,7 @@ const App = () => {
     const handleFolderSelected = (folderPath: string) => {
       // Obstoječa koda - brez sprememb
       if (typeof folderPath === "string") {
-        console.log("Folder selected:", folderPath);
+        logger.info("Folder selected:", folderPath);
         const normalizedPath = normalizePath(folderPath);
 
         // Najprej nastavimo novo izbrano mapo
@@ -411,12 +416,16 @@ const App = () => {
           status: "processing",
           message: "Requesting file list...",
         });
+
+        // Update our request tracking references
+        lastRequestedFolder.current = normalizedPath;
+
         window.electron.ipcRenderer.send("request-file-list", normalizedPath);
 
         // Update recent folders when a new folder is selected
         updateRecentFolders(normalizedPath);
       } else {
-        console.error("Invalid folder path received:", folderPath);
+        logger.error("Invalid folder path received:", folderPath);
         setProcessingStatus({
           status: "error",
           message: "Invalid folder path received",
@@ -425,7 +434,7 @@ const App = () => {
     };
 
     const handleFileListData = (receivedFiles: FileData[]) => {
-      console.log("Received file list data:", receivedFiles.length, "files");
+      logger.info("Received file list data:", receivedFiles.length, "files");
 
       // POMEMBNO: Ponovno naložimo project state pred uporabo prejetih datotek
       // To zagotovi, da imamo najnovejše vrednosti vseh nastavitev po Force Reload
@@ -440,7 +449,7 @@ const App = () => {
         setFileListView(currentState.fileListView);
         setIncludeFileTree(currentState.includeFileTree);
         setIncludePromptOverview(currentState.includePromptOverview);
-        console.log("Ponovno naloženo stanje iz localStorage:", {
+        logger.info("Ponovno naloženo stanje iz localStorage:", {
           selectedFiles: currentState.selectedFiles.length,
           includeFileTree: currentState.includeFileTree,
           includePromptOverview: currentState.includePromptOverview,
@@ -465,7 +474,7 @@ const App = () => {
       status: "idle" | "processing" | "complete" | "error";
       message: string;
     }) => {
-      console.log("Processing status:", status);
+      logger.info("Processing status:", status);
       setProcessingStatus(status);
     };
 
@@ -553,11 +562,25 @@ const App = () => {
   useEffect(() => {
     if (!isElectron || !selectedFolder) return;
 
-    console.log("Loading saved folder on startup:", selectedFolder);
+    // Prevent duplicate loading
+    if (
+      initialLoadTriggered.current &&
+      lastRequestedFolder.current === selectedFolder
+    ) {
+      logger.debug("Skipping duplicate load for folder:", selectedFolder);
+      return;
+    }
+
+    logger.info("Loading saved folder on startup:", selectedFolder);
     setProcessingStatus({
       status: "processing",
       message: "Loading files from previously selected folder...",
     });
+
+    // Mark this folder as requested
+    initialLoadTriggered.current = true;
+    lastRequestedFolder.current = selectedFolder;
+
     window.electron.ipcRenderer.send("request-file-list", selectedFolder);
 
     // Update recent folders when loading initial folder
@@ -566,11 +589,11 @@ const App = () => {
 
   const openFolder = () => {
     if (isElectron) {
-      console.log("Opening folder dialog");
+      logger.info("Opening folder dialog");
       setProcessingStatus({ status: "idle", message: "Select a folder..." });
       window.electron.ipcRenderer.send("open-folder");
     } else {
-      console.warn("Folder selection not available in browser");
+      logger.warn("Folder selection not available in browser");
     }
   };
 
@@ -644,7 +667,7 @@ const App = () => {
   const refreshOrReloadFolder = (action: "refresh" | "reload") => {
     if (!selectedFolder || !isElectron) return;
 
-    console.log(
+    logger.info(
       `${
         action === "refresh" ? "Refreshing" : "Reloading"
       } folder: ${selectedFolder}`
@@ -664,7 +687,7 @@ const App = () => {
       // Podprimo obe strukturi - array ali objekt s files poljem
       const receivedFiles = Array.isArray(data) ? data : data.files;
 
-      console.log(`Received data for ${action}: ${receivedFiles.length} files`);
+      logger.info(`Received data for ${action}: ${receivedFiles.length} files`);
 
       // Kategoriziraj datoteke - podobno kot v handleFileListData
       const categorizedFiles = receivedFiles.map((file) => ({
@@ -698,6 +721,9 @@ const App = () => {
 
     // Dodamo listener preden pošljemo zahtevo
     window.electron.ipcRenderer.on("file-list-data", handleDataForRefresh);
+
+    // Update request tracking reference
+    lastRequestedFolder.current = selectedFolder;
 
     // Zahtevamo osvežitev seznama datotek
     window.electron.ipcRenderer.send("request-file-list", selectedFolder);
@@ -841,6 +867,9 @@ const App = () => {
       status: "processing",
       message: "Nalagam datoteke iz izbrane mape...",
     });
+
+    // Update request tracking reference
+    lastRequestedFolder.current = folderPath;
 
     // Zahtevamo seznam datotek
     window.electron.ipcRenderer.send("request-file-list", folderPath);
