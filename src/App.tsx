@@ -21,6 +21,7 @@ import {
   comparePaths,
   comparePathsStructurally,
   basename,
+  getRelativePath,
 } from "./utils/pathUtils";
 import {
   getLastSelectedFolder,
@@ -45,7 +46,18 @@ import {
   FolderUp,
   FolderDown,
 } from "lucide-react";
-import { MAX_RECENT_FOLDERS } from "./constants";
+import {
+  MAX_RECENT_FOLDERS,
+  PROMPT_SECTIONS,
+  PROMPT_MARKERS,
+  PROJECT_TREE_CONFIG,
+  LOCAL_STORAGE_KEYS,
+  DESCRIPTIONS_DIR,
+  OVERVIEW_FILENAME,
+  DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
+  DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
+} from "./constants";
+import { PromptSectionDefinition } from "./types/promptConfigTypes";
 
 console.log("--- App.tsx component function starting ---");
 
@@ -64,6 +76,43 @@ declare global {
     };
   }
 }
+
+// Define categorizeFile function outside the component to avoid reference issues
+const categorizeFile = (
+  file: FileData,
+  currentSelectedFolder: string | null,
+  sections: PromptSectionDefinition[]
+): string => {
+  const defaultSection = sections.find((s) => s.directory === null);
+  const defaultSectionId = defaultSection?.id || "project_files";
+
+  // Special files don't get categorized by path for content sections
+  if (
+    file.descriptionForSectionId ||
+    file.isOverviewTemplate ||
+    file.isProjectTreeDescription ||
+    !currentSelectedFolder
+  ) {
+    return defaultSectionId; // Assign default, won't be treated as content file anyway
+  }
+
+  const relativePath = getRelativePath(file.path, currentSelectedFolder);
+  if (!relativePath) {
+    return defaultSectionId;
+  }
+
+  for (const section of sections) {
+    if (section.directory) {
+      if (
+        relativePath === section.directory ||
+        relativePath.startsWith(section.directory + "/")
+      ) {
+        return section.id;
+      }
+    }
+  }
+  return defaultSectionId;
+};
 
 const App = () => {
   // Določimo tip za lastSelectedFolder
@@ -103,6 +152,9 @@ const App = () => {
   const [includeFileTree, setIncludeFileTree] = useState(
     initialState.includeFileTree
   );
+  const [includePromptOverview, setIncludePromptOverview] = useState(
+    initialState.includePromptOverview
+  );
   const [recentFolders, setRecentFolders] = useState(loadRecentFolders());
 
   // State for sort dropdown
@@ -112,6 +164,165 @@ const App = () => {
 
   // Check if we're running in Electron or browser environment
   const isElectron = window.electron !== undefined;
+
+  // Format marker helper function
+  const formatMarker = useCallback(
+    (
+      template: string,
+      context: { section_name?: string; file_path?: string }
+    ): string => {
+      let result = template;
+      if (context.section_name !== undefined)
+        result = result.replace("{section_name}", context.section_name);
+      if (context.file_path !== undefined)
+        result = result.replace("{file_path}", context.file_path);
+      return result;
+    },
+    []
+  );
+
+  // Get selected files content
+  const getSelectedFilesContent = useCallback(() => {
+    // 1. Filter for *selected* files that are actual content (not binary, skipped, special)
+    const contentFiles = allFiles.filter(
+      (file: FileData) =>
+        selectedFiles.includes(file.path) &&
+        !file.isBinary &&
+        !file.isSkipped &&
+        !file.descriptionForSectionId &&
+        !file.isOverviewTemplate &&
+        !file.isProjectTreeDescription
+    );
+
+    // 2. Find special files (descriptions, overview) from *all* files
+    const descriptionMap: Record<string, string> = {}; // Key: sectionId or 'project_tree'
+    let overviewContent: string | null = null;
+    allFiles.forEach((file: FileData) => {
+      if (file.content) {
+        // Ensure content exists
+        if (file.descriptionForSectionId) {
+          descriptionMap[file.descriptionForSectionId] = file.content;
+        } else if (file.isProjectTreeDescription) {
+          descriptionMap["project_tree"] = file.content; // Use special key
+        } else if (file.isOverviewTemplate) {
+          overviewContent = file.content;
+        }
+      }
+    });
+
+    // Early exit if nothing to output
+    if (
+      contentFiles.length === 0 &&
+      !includeFileTree &&
+      !includePromptOverview
+    ) {
+      return "No text files selected, or tree/overview not included.";
+    }
+
+    // 3. Sort content files based on UI settings
+    const [sortKey, sortDir] = sortOrder.split("-");
+    const sortedContentFiles = [...contentFiles].sort((a, b) => {
+      let comparison = 0;
+      if (sortKey === "name") comparison = a.name.localeCompare(b.name);
+      else if (sortKey === "tokens") comparison = a.tokenCount - b.tokenCount;
+      else if (sortKey === "size") comparison = a.size - b.size;
+      else if (sortKey === "path")
+        comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
+      return sortDir === "asc" ? comparison : -comparison;
+    });
+
+    // --- Build Output ---
+    let output = "";
+    const markers = PROMPT_MARKERS;
+
+    // 4. Add Overview (if enabled and content exists)
+    if (includePromptOverview && overviewContent) {
+      output += "==== SYSTEM_PROMPT_OVERVIEW ====\n";
+      const contentString = String(overviewContent); // Eksplicitno pretvorimo v string
+      output += contentString.trim() + "\n\n"; // Trim just in case, add spacing
+    }
+
+    // 5. Add Project Tree (if enabled)
+    if (includeFileTree && selectedFolder) {
+      const treeSectionName = PROJECT_TREE_CONFIG.name;
+      const treeDescription = descriptionMap["project_tree"];
+
+      output +=
+        formatMarker(markers.section_open, { section_name: treeSectionName }) +
+        "\n";
+      if (treeDescription) {
+        output += markers.description_open + "\n";
+        output += String(treeDescription).trim() + "\n";
+        output += markers.description_close + "\n\n";
+      }
+      // Generate tree from the *selected content* files
+      output += ".\n"; // root directory indicator
+      const asciiTree = generateAsciiFileTree(
+        sortedContentFiles,
+        selectedFolder
+      );
+      output += asciiTree + "\n";
+      output +=
+        formatMarker(markers.section_close, { section_name: treeSectionName }) +
+        "\n\n";
+    }
+
+    // 6. Group sorted content files by sectionId
+    const filesBySection: Record<string, FileData[]> = {};
+    const defaultSectionId =
+      PROMPT_SECTIONS.find((s) => s.directory === null)?.id || "project_files";
+    sortedContentFiles.forEach((file) => {
+      const sectionId = file.sectionId || defaultSectionId;
+      if (!filesBySection[sectionId]) filesBySection[sectionId] = [];
+      filesBySection[sectionId].push(file);
+    });
+
+    // 7. Iterate through sections IN DEFINED ORDER
+    for (const section of PROMPT_SECTIONS) {
+      const sectionFiles = filesBySection[section.id];
+      if (!sectionFiles || sectionFiles.length === 0) continue; // Skip empty sections
+
+      // --- Section Start ---
+      output +=
+        formatMarker(markers.section_open, { section_name: section.name }) +
+        "\n\n";
+
+      // --- Description ---
+      const description = descriptionMap[section.id];
+      if (description) {
+        output += markers.description_open + "\n";
+        output += String(description).trim() + "\n";
+        output += markers.description_close + "\n\n";
+      }
+
+      // --- Files ---
+      sectionFiles.forEach((file) => {
+        const relativePath = getRelativePath(file.path, selectedFolder);
+        output +=
+          formatMarker(markers.file_open, { file_path: relativePath }) + "\n";
+        output += file.content; // Raw content
+        if (file.content && !file.content.endsWith("\n")) output += "\n"; // Ensure newline before end marker
+        output +=
+          formatMarker(markers.file_close, { file_path: relativePath }) +
+          "\n\n";
+      });
+
+      // --- Section End ---
+      output +=
+        formatMarker(markers.section_close, { section_name: section.name }) +
+        "\n\n";
+    }
+
+    return output.trim();
+  }, [
+    allFiles,
+    selectedFiles,
+    sortOrder,
+    selectedFolder,
+    includeFileTree,
+    includePromptOverview,
+    formatMarker,
+  ]);
 
   // Update recent folders list - najprej definiramo funkcijo
   const updateRecentFolders = useCallback((folderPath: string) => {
@@ -168,70 +379,12 @@ const App = () => {
     [selectedFolder]
   );
 
-  // Persist selected folder when it changes
+  // Obstoječi useEffect za 'file-list-data' listener
   useEffect(() => {
-    saveLastSelectedFolder(selectedFolder);
-  }, [selectedFolder]);
-
-  // Persist selected files when they change
-  useEffect(() => {
-    updateProjectProperty(selectedFolder, "selectedFiles", selectedFiles);
-  }, [selectedFiles, selectedFolder]);
-
-  // Persist sort order when it changes
-  useEffect(() => {
-    updateProjectProperty(selectedFolder, "sortOrder", sortOrder);
-  }, [sortOrder, selectedFolder]);
-
-  // Persist search term when it changes
-  useEffect(() => {
-    updateProjectProperty(selectedFolder, "searchTerm", searchTerm);
-  }, [searchTerm, selectedFolder]);
-
-  // Persist file list view when it changes
-  useEffect(() => {
-    updateProjectProperty(selectedFolder, "fileListView", fileListView);
-  }, [fileListView, selectedFolder]);
-
-  // Persist expanded nodes when they change
-  useEffect(() => {
-    updateProjectProperty(selectedFolder, "expandedNodes", expandedNodes);
-  }, [expandedNodes, selectedFolder]);
-
-  // Persist include file tree setting when it changes
-  useEffect(() => {
-    updateProjectProperty(selectedFolder, "includeFileTree", includeFileTree);
-  }, [includeFileTree, selectedFolder]);
-
-  // Persist recent folders when they change
-  useEffect(() => {
-    saveRecentFolders(recentFolders);
-  }, [recentFolders]);
-
-  // Load initial data from saved folder
-  useEffect(() => {
-    if (!isElectron || !selectedFolder) return;
-
-    console.log("Loading saved folder on startup:", selectedFolder);
-    setProcessingStatus({
-      status: "processing",
-      message: "Loading files from previously selected folder...",
-    });
-    window.electron.ipcRenderer.send("request-file-list", selectedFolder);
-
-    // Update recent folders when loading initial folder
-    updateRecentFolders(selectedFolder);
-  }, [isElectron, selectedFolder, updateRecentFolders]);
-
-  // Listen for folder selection from main process
-  useEffect(() => {
-    if (!isElectron) {
-      console.warn("Not running in Electron environment");
-      return;
-    }
+    if (!isElectron) return;
 
     const handleFolderSelected = (folderPath: string) => {
-      // Check if folderPath is valid string
+      // Obstoječa koda - brez sprememb
       if (typeof folderPath === "string") {
         console.log("Folder selected:", folderPath);
         const normalizedPath = normalizePath(folderPath);
@@ -247,6 +400,7 @@ const App = () => {
         setSearchTerm(newState.searchTerm);
         setFileListView(newState.fileListView);
         setIncludeFileTree(newState.includeFileTree);
+        setIncludePromptOverview(newState.includePromptOverview);
 
         // Počistimo sezname datotek
         setAllFiles([]);
@@ -270,24 +424,43 @@ const App = () => {
       }
     };
 
-    const handleFileListData = (
-      data: FileData[] | { files: FileData[]; totalTokenCount: number }
-    ) => {
-      // Podprimo obe strukturi - array ali objekt s files poljem
-      const files = Array.isArray(data) ? data : data.files;
-      console.log("Received file list data:", files.length, "files");
-      setAllFiles(files);
+    const handleFileListData = (receivedFiles: FileData[]) => {
+      console.log("Received file list data:", receivedFiles.length, "files");
+
+      // POMEMBNO: Ponovno naložimo project state pred uporabo prejetih datotek
+      // To zagotovi, da imamo najnovejše vrednosti vseh nastavitev po Force Reload
+      if (selectedFolder) {
+        const currentState = loadInitialState(selectedFolder);
+
+        // Posodobimo vse vrednosti iz localStorage
+        setSelectedFiles(currentState.selectedFiles);
+        setExpandedNodes(currentState.expandedNodes);
+        setSortOrder(currentState.sortOrder);
+        setSearchTerm(currentState.searchTerm);
+        setFileListView(currentState.fileListView);
+        setIncludeFileTree(currentState.includeFileTree);
+        setIncludePromptOverview(currentState.includePromptOverview);
+        console.log("Ponovno naloženo stanje iz localStorage:", {
+          selectedFiles: currentState.selectedFiles.length,
+          includeFileTree: currentState.includeFileTree,
+          includePromptOverview: currentState.includePromptOverview,
+        });
+      }
+
+      // Nadaljujemo z običajno obdelavo prejetih datotek
+      const categorizedFiles = receivedFiles.map((file) => ({
+        ...file,
+        sectionId: categorizeFile(file, selectedFolder, PROMPT_SECTIONS),
+      }));
+      setAllFiles(categorizedFiles);
       setProcessingStatus({
         status: "complete",
-        message: `Loaded ${files.length} files`,
+        message: `Found ${categorizedFiles.length} files`,
       });
-
-      // Apply filters and sort to the new files
-      applyFiltersAndSort(files, sortOrder, searchTerm);
-
-      // Ne resetiramo več izbranih datotek, saj jih že naložimo iz localStorage
+      applyFiltersAndSort(categorizedFiles, sortOrder, searchTerm);
     };
 
+    // Ostali del useEffect-a ostane enak
     const handleProcessingStatus = (status: {
       status: "idle" | "processing" | "complete" | "error";
       message: string;
@@ -324,7 +497,72 @@ const App = () => {
     applyFiltersAndSort,
     updateRecentFolders,
     loadInitialState,
+    selectedFolder,
   ]);
+
+  // Persist selected folder when it changes
+  useEffect(() => {
+    saveLastSelectedFolder(selectedFolder);
+  }, [selectedFolder]);
+
+  // Persist selected files when they change
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "selectedFiles", selectedFiles);
+  }, [selectedFiles, selectedFolder]);
+
+  // Persist sort order when it changes
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "sortOrder", sortOrder);
+  }, [sortOrder, selectedFolder]);
+
+  // Persist search term when it changes
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "searchTerm", searchTerm);
+  }, [searchTerm, selectedFolder]);
+
+  // Persist file list view when it changes
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "fileListView", fileListView);
+  }, [fileListView, selectedFolder]);
+
+  // Persist expanded nodes when they change
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "expandedNodes", expandedNodes);
+  }, [expandedNodes, selectedFolder]);
+
+  // Persist include file tree setting when it changes
+  useEffect(() => {
+    updateProjectProperty(selectedFolder, "includeFileTree", includeFileTree);
+  }, [includeFileTree, selectedFolder]);
+
+  // Persist include prompt overview setting when it changes
+  useEffect(() => {
+    updateProjectProperty(
+      selectedFolder,
+      "includePromptOverview",
+      includePromptOverview
+    );
+  }, [includePromptOverview, selectedFolder]);
+
+  // Persist recent folders when they change
+  useEffect(() => {
+    saveRecentFolders(recentFolders);
+  }, [recentFolders]);
+
+  // Load initial data from saved folder
+  useEffect(() => {
+    if (!isElectron || !selectedFolder) return;
+
+    console.log("Loading saved folder on startup:", selectedFolder);
+    setProcessingStatus({
+      status: "processing",
+      message: "Loading files from previously selected folder...",
+    });
+    window.electron.ipcRenderer.send("request-file-list", selectedFolder);
+
+    // Update recent folders when loading initial folder
+    updateRecentFolders(selectedFolder);
+  }, [isElectron, selectedFolder, updateRecentFolders]);
 
   const openFolder = () => {
     if (isElectron) {
@@ -424,22 +662,26 @@ const App = () => {
       data: FileData[] | { files: FileData[]; totalTokenCount: number }
     ) => {
       // Podprimo obe strukturi - array ali objekt s files poljem
-      const refreshedFiles = Array.isArray(data) ? data : data.files;
+      const receivedFiles = Array.isArray(data) ? data : data.files;
 
-      console.log(
-        `Received data for ${action}: ${refreshedFiles.length} files`
-      );
+      console.log(`Received data for ${action}: ${receivedFiles.length} files`);
+
+      // Kategoriziraj datoteke - podobno kot v handleFileListData
+      const categorizedFiles = receivedFiles.map((file) => ({
+        ...file,
+        sectionId: categorizeFile(file, selectedFolder, PROMPT_SECTIONS),
+      }));
 
       // Obnovimo izbiro na podlagi shranjenih datotek in novega seznama datotek
       const validPaths = new Set(
-        refreshedFiles.map((f) => normalizePath(f.path))
+        categorizedFiles.map((f) => normalizePath(f.path))
       );
       const restoredSelection = selectionToPreserve.filter((p) =>
         validPaths.has(normalizePath(p))
       );
 
-      setAllFiles(refreshedFiles);
-      applyFiltersAndSort(refreshedFiles, sortOrder, searchTerm);
+      setAllFiles(categorizedFiles);
+      applyFiltersAndSort(categorizedFiles, sortOrder, searchTerm);
       setSelectedFiles(restoredSelection);
 
       setProcessingStatus({
@@ -493,54 +735,6 @@ const App = () => {
       const file = allFiles.find((f: FileData) => f.path === path);
       return total + (file ? file.tokenCount : 0);
     }, 0);
-  };
-
-  // Concatenate selected files content for copying
-  const getSelectedFilesContent = () => {
-    // Sort selected files according to current sort order
-    const [sortKey, sortDir] = sortOrder.split("-");
-    const sortedSelected = allFiles
-      .filter((file: FileData) => selectedFiles.includes(file.path))
-      .sort((a: FileData, b: FileData) => {
-        let comparison = 0;
-
-        if (sortKey === "name") {
-          comparison = a.name.localeCompare(b.name);
-        } else if (sortKey === "tokens") {
-          comparison = a.tokenCount - b.tokenCount;
-        } else if (sortKey === "size") {
-          comparison = a.size - b.size;
-        } else if (sortKey === "path") {
-          comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
-        }
-
-        return sortDir === "asc" ? comparison : -comparison;
-      });
-
-    if (sortedSelected.length === 0) {
-      return "No files selected.";
-    }
-
-    let concatenatedString = "";
-
-    // Add ASCII file tree if enabled
-    if (includeFileTree && selectedFolder) {
-      const asciiTree = generateAsciiFileTree(sortedSelected, selectedFolder);
-      concatenatedString += `Project structure:\n${selectedFolder}\n${asciiTree}`;
-    }
-
-    sortedSelected.forEach((file: FileData) => {
-      // Get relative path from selected folder
-      let relativePath = file.path;
-      if (selectedFolder && file.path.startsWith(selectedFolder)) {
-        relativePath = file.path.substring(selectedFolder.length + 1); // +1 for the slash
-      }
-
-      concatenatedString += `\n\n#### File: ${relativePath}\n\n`;
-      concatenatedString += file.content;
-    });
-
-    return concatenatedString;
   };
 
   // Handle select all files
@@ -636,6 +830,7 @@ const App = () => {
     setSearchTerm(projectState.searchTerm);
     setFileListView(projectState.fileListView);
     setIncludeFileTree(projectState.includeFileTree);
+    setIncludePromptOverview(projectState.includePromptOverview);
 
     // Ponastavimo sezname datotek
     setAllFiles([]);
@@ -678,6 +873,7 @@ const App = () => {
     setSearchTerm(defaultState.searchTerm);
     setFileListView(defaultState.fileListView);
     setIncludeFileTree(defaultState.includeFileTree);
+    setIncludePromptOverview(defaultState.includePromptOverview);
 
     setAllFiles([]);
     setDisplayedFiles([]);
@@ -881,9 +1077,31 @@ const App = () => {
 
               <div className="copy-button-container">
                 <FileTreeToggle
+                  checked={includePromptOverview}
+                  onChange={() =>
+                    setIncludePromptOverview(!includePromptOverview)
+                  }
+                  title={
+                    includePromptOverview
+                      ? "Exclude prompt overview from output"
+                      : "Include prompt overview in output"
+                  }
+                >
+                  <span>Include Overview</span>
+                </FileTreeToggle>
+
+                <FileTreeToggle
                   checked={includeFileTree}
                   onChange={() => setIncludeFileTree(!includeFileTree)}
-                />
+                  title={
+                    includeFileTree
+                      ? "Exclude file tree from output"
+                      : "Include file tree in output"
+                  }
+                >
+                  <span>Include File Tree</span>
+                </FileTreeToggle>
+
                 <CopyButton
                   text={getSelectedFilesContent()}
                   className="primary full-width copy-files-btn"

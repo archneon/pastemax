@@ -3,7 +3,8 @@ import {
   LOCAL_STORAGE_KEYS,
   DEFAULT_SORT_ORDER,
   DEFAULT_FILE_LIST_VIEW,
-  DEFAULT_INCLUDE_FILE_TREE,
+  DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
+  DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
   FileListViewValue,
 } from "../constants";
 
@@ -32,6 +33,7 @@ interface ProjectState {
   searchTerm?: string;
   fileListView?: FileListViewValue;
   includeFileTree?: boolean;
+  includePromptOverview?: boolean;
   lastAccessed?: number;
 }
 
@@ -49,7 +51,8 @@ const defaultProjectState: ProjectState = {
   sortOrder: DEFAULT_SORT_ORDER,
   searchTerm: "",
   fileListView: DEFAULT_FILE_LIST_VIEW,
-  includeFileTree: DEFAULT_INCLUDE_FILE_TREE,
+  includeFileTree: DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
+  includePromptOverview: DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
 };
 
 /**
@@ -196,6 +199,7 @@ export function loadInitialState(folderPath: string | null): Omit<
     searchTerm: state.searchTerm!,
     fileListView: state.fileListView!,
     includeFileTree: state.includeFileTree!,
+    includePromptOverview: state.includePromptOverview!,
     lastAccessed: state.lastAccessed,
   };
 }

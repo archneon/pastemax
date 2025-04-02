@@ -1,0 +1,2 @@
+Struktura projekta prikazuje organizacijo datotek, ki so bile izbrane za vključitev.
+To vam pomaga razumeti hierarhijo in razmerja med datotekami. 

@@ -1,0 +1,5 @@
+Pregled projekta:
+Ta prompt vsebuje zbirko datotek iz projekta PasteMax, ki služi za kopiranje in strukturiranje datotek za AI pomočnike.
+
+V nadaljevanju boste našli pravila, dokumentacijo in ključne datoteke projekta.
+Upoštevajte pravila navedena v sekciji RULES. 

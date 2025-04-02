@@ -1,0 +1,2 @@
+Ta sekcija vsebuje splošno dokumentacijo projekta.
+Tukaj boste našli razlago o ključnih komponentah, API-jih in funkcionalnostih. 

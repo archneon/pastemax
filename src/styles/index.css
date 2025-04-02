@@ -1049,7 +1049,7 @@ input[type="text"].search-input:focus {
 
 /* Style za file-list-container-header */
 .file-list-container-header {
-  padding: 8px 16px;
+  padding: 8px 12px;
   font-size: 14px;
   color: var(--text-secondary);
   background-color: var(--background-secondary);
@@ -1222,3 +1222,70 @@ input[type="text"].search-input:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Structured FileList Styles */
+.file-list-structured {
+  display: flex;
+  flex-direction: column;
+  /* gap: 1.5rem; */
+  width: 100%;
+  overflow-y: auto;
+  max-height: 100%;
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-bottom: 16px;
+}
+
+.file-list-section {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--card-bg-color);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  min-width: 0;
+}
+
+.file-list-section-header {
+  padding: 8px 0;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--background-primary);
+}
+
+.file-list.view-structured-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 12px;
+  padding-top: 0;
+  padding-right: 0;
+  padding-left: 0;
+  padding-bottom: 12px;
+  width: 100%;
+  overflow: visible;
+}
+
+/* .file-card {
+  border-radius: 4px;
+  padding: 10px;
+  background-color: var(--card-bg-color);
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.file-card .file-type {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  background-color: var(--tag-bg-color);
+  padding: 2px 6px;
+  border-radius: 3px;
+} */

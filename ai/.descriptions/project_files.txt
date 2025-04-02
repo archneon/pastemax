@@ -1,0 +1,2 @@
+Ta sekcija vsebuje izvorno kodo projekta.
+Tu so vključene vse datoteke, ki niso uvrščene v posebne kategorije, kot so pravila, dokumentacija ali navodila. 

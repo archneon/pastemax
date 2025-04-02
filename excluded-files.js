@@ -5,6 +5,13 @@
 module.exports = {
   // Files to always exclude by default when a folder is first loaded
   excludedFiles: [
+    // Paraglide JS related
+    "cache/**",
+    "project.inlang/cache/**",
+
+    // Exclude all description files
+    "ai/.descriptions/**",
+
     // NPM/Yarn/Node related
     "package-lock.json",
     "yarn.lock",
@@ -16,10 +23,6 @@ module.exports = {
     ".yarnrc",
     ".nvmrc",
     "node_modules/**",
-
-    // Paraglide JS related
-    "cache/**",
-    "project.inlang/cache/**",
 
     // JavaScript/TypeScript related
     ".eslintrc*",

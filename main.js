@@ -9,7 +9,14 @@ const {
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { IPC_CHANNELS, MAX_FILE_SIZE } = require("./constants");
+const {
+  IPC_CHANNELS,
+  MAX_FILE_SIZE,
+  DESCRIPTIONS_DIR,
+  OVERVIEW_FILENAME,
+  PROMPT_SECTIONS,
+  PROJECT_TREE_CONFIG,
+} = require("./constants");
 
 // Add handling for the 'ignore' module
 let ignore;
@@ -294,25 +301,21 @@ function countTokens(text) {
 function readFilesRecursively(dir, rootDir, ignoreFilter) {
   rootDir = rootDir || dir;
   ignoreFilter = ignoreFilter || loadGitignore(rootDir);
-
   let results = [];
 
   try {
     const dirents = fs.readdirSync(dir, { withFileTypes: true });
-
-    // Process directories first, then files
     const directories = [];
     const files = [];
 
     dirents.forEach((dirent) => {
       const fullPath = path.join(dir, dirent.name);
+      // Use relative path for ignore checks AND description checks
       const relativePath = path.relative(rootDir, fullPath);
-      const relativePathNormalized = relativePath.replace(/\\/g, "/"); // Normalize for consistent pattern matching
+      const relativePathNormalized = relativePath.replace(/\\/g, "/");
 
       // Skip if the path is ignored by gitignore
-      if (ignoreFilter.ignores(relativePathNormalized)) {
-        return;
-      }
+      if (ignoreFilter.ignores(relativePathNormalized)) return;
 
       // Check against all excluded patterns with proper glob pattern handling
       for (const pattern of excludedFiles) {
@@ -352,7 +355,7 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
       if (dirent.isDirectory()) {
         directories.push(dirent);
       } else if (dirent.isFile()) {
-        files.push(dirent);
+        files.push({ dirent, fullPath, relativePathNormalized }); // Pass info along
       }
     });
 
@@ -363,11 +366,10 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
       results = results.concat(subResults);
     });
 
-    // Then process files
-    files.forEach((dirent) => {
-      const fullPath = path.join(dir, dirent.name);
+    // Process files
+    files.forEach(({ dirent, fullPath, relativePathNormalized }) => {
+      // Use passed info
       try {
-        // Get file stats for size
         const stats = fs.statSync(fullPath);
         const fileSize = stats.size;
 
@@ -408,6 +410,34 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
           // Calculate token count
           const tokenCount = countTokens(fileContent);
 
+          // --- Identify Description/Overview Files ---
+          let descriptionForSectionId = null;
+          let isOverviewTemplate = false;
+          let isProjectTreeDescription = false; // Flag for tree description
+          const parentDirRelative = path.dirname(relativePathNormalized);
+
+          // Check if the file is inside the descriptions directory
+          if (parentDirRelative === DESCRIPTIONS_DIR) {
+            if (dirent.name === OVERVIEW_FILENAME) {
+              isOverviewTemplate = true;
+            } else {
+              // Check if it's a description for a defined section
+              const matchingSection = PROMPT_SECTIONS.find(
+                (s) => s.descriptionFilename === dirent.name
+              );
+              if (matchingSection) {
+                descriptionForSectionId = matchingSection.id;
+              }
+              // Check if it's the description for the project tree
+              else if (
+                PROJECT_TREE_CONFIG.descriptionFilename === dirent.name
+              ) {
+                isProjectTreeDescription = true;
+              }
+            }
+          }
+          // --- END Identification Logic ---
+
           // Add file info with content and token count
           results.push({
             name: dirent.name,
@@ -417,6 +447,11 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
             size: fileSize,
             isBinary: false,
             isSkipped: false,
+            descriptionForSectionId: descriptionForSectionId,
+            isOverviewTemplate: isOverviewTemplate,
+            isProjectTreeDescription: isProjectTreeDescription,
+            fileType: path.extname(fullPath).substring(1).toUpperCase(),
+            excludedByDefault: shouldExcludeByDefault(fullPath, rootDir),
           });
         }
       } catch (err) {
@@ -465,13 +500,10 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
 
       // Process the files to ensure they're serializable
       const serializableFiles = files.map((file) => {
-        // Normalize the path to use forward slashes consistently
         const normalizedPath = normalizePath(file.path);
-
-        // Create a clean file object
         return {
           name: file.name ? String(file.name) : "",
-          path: normalizedPath, // Use normalized path
+          path: normalizedPath,
           tokenCount: typeof file.tokenCount === "number" ? file.tokenCount : 0,
           size: typeof file.size === "number" ? file.size : 0,
           content: file.isBinary
@@ -486,27 +518,38 @@ ipcMain.on(IPC_CHANNELS.REQUEST_FILE_LIST, async (event, folderPath) => {
           excludedByDefault: shouldExcludeByDefault(
             normalizedPath,
             normalizePath(folderPath)
-          ), // Also normalize here
+          ),
+          descriptionForSectionId: file.descriptionForSectionId
+            ? String(file.descriptionForSectionId)
+            : null,
+          isOverviewTemplate: Boolean(file.isOverviewTemplate),
+          isProjectTreeDescription: Boolean(file.isProjectTreeDescription),
         };
       });
 
       try {
         console.log(`Sending ${serializableFiles.length} files to renderer`);
-        // Log a sample of paths to check normalization
-        if (serializableFiles.length > 0) {
-          console.log("Sample file paths (first 3):");
-          serializableFiles.slice(0, 3).forEach((file) => {
-            console.log(`- ${file.path}`);
-          });
+        // Log a sample of description/overview files found
+        const specialFiles = serializableFiles.filter(
+          (f) =>
+            f.descriptionForSectionId ||
+            f.isOverviewTemplate ||
+            f.isProjectTreeDescription
+        );
+        if (specialFiles.length > 0) {
+          console.log(
+            `Found ${specialFiles.length} special description/overview files:`
+          );
+          specialFiles
+            .slice(0, 5)
+            .forEach((f) =>
+              console.log(
+                `- ${f.path} (Overview: ${f.isOverviewTemplate}, DescFor: ${f.descriptionForSectionId}, TreeDesc: ${f.isProjectTreeDescription})`
+              )
+            );
         }
 
-        event.sender.send(IPC_CHANNELS.FILE_LIST_DATA, {
-          files: serializableFiles,
-          totalTokenCount: serializableFiles.reduce(
-            (total, file) => total + file.tokenCount,
-            0
-          ),
-        });
+        event.sender.send(IPC_CHANNELS.FILE_LIST_DATA, serializableFiles);
       } catch (sendErr) {
         console.error("Error sending file data:", sendErr);
 

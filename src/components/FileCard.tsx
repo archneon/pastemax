@@ -3,6 +3,7 @@ import { FileCardProps } from "../types/FileTypes";
 import { Plus, X, FileText } from "lucide-react";
 import CopyButton from "./CopyButton";
 import { getRelativePath } from "../utils/pathUtils";
+import { PromptSectionDefinition } from "../types/promptConfigTypes";
 
 interface FileCardComponentProps {
   file: {
@@ -14,6 +15,7 @@ interface FileCardComponentProps {
   isSelected: boolean;
   toggleSelection: (path: string) => void;
   selectedFolder: string | null;
+  section?: PromptSectionDefinition; // Type from the new file
 }
 
 const FileCard = ({
@@ -21,6 +23,7 @@ const FileCard = ({
   isSelected,
   toggleSelection,
   selectedFolder,
+  section,
 }: FileCardComponentProps) => {
   const { name, path: filePath, tokenCount } = file;
 
@@ -31,7 +34,24 @@ const FileCard = ({
   const relativePath = getRelativePath(filePath, selectedFolder);
 
   return (
-    <div className={`file-card ${isSelected ? "selected" : ""}`}>
+    // <div
+    //   className={`file-card ${isSelected ? "selected" : ""}`}
+    //   style={{
+    //     borderLeft: section
+    //       ? `4px solid ${section.color}`
+    //       : "1px solid var(--border-color)",
+    //     paddingLeft: section ? "7px" : "10px",
+    //   }}
+    // >
+    <div
+      className={`file-card ${isSelected ? "selected" : ""}`}
+      style={{
+        border: section
+          ? `2px solid ${section.color}`
+          : "1px solid var(--border-color)",
+        // padding: "10px",
+      }}
+    >
       <div className="file-card-header">
         <div className="file-card-icon">
           <FileText size={16} />
@@ -46,7 +66,16 @@ const FileCard = ({
       <div className="file-card-info">
         <div className="file-card-tokens">
           <span className="tokens-count">~{formattedTokens} tokens</span>
-          <span className="file-type">type</span>
+          {section ? (
+            <span
+              className="file-type"
+              style={{ color: section.color, fontWeight: 500 }}
+            >
+              {section.label}
+            </span>
+          ) : (
+            <span className="file-type"></span> // Fallback empty span
+          )}
         </div>
       </div>
 
