@@ -1,2 +1,2 @@
-Ta sekcija vsebuje pravila in navodila. 
-Prosim, naslednje datoteke pozorno preberite in sledite navodilom. 
+This section contains rules and instructions.
+Please carefully read the following files and follow the guidelines. 

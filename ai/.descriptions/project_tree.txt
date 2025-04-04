@@ -1,2 +1,2 @@
-Struktura projekta prikazuje organizacijo datotek, ki so bile izbrane za vključitev.
-To vam pomaga razumeti hierarhijo in razmerja med datotekami. 
+The project structure shows the organization of files that have been selected for inclusion.
+This helps you understand the hierarchy and relationships between files. 

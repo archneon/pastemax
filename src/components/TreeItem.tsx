@@ -116,7 +116,8 @@ const TreeItem = ({
       className={`tree-item ${isSelected ? "selected" : ""} ${
         isExcludedByDefault ? "excluded-by-default" : ""
       }`}
-      style={{ marginLeft: `${level * 16}px` }}
+      // style={{ marginLeft: `${level * 16}px` }}
+      style={{ paddingLeft: `${level * 8}px` }}
       onClick={handleItemClick}
     >
       {type === "directory" && (

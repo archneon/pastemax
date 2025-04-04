@@ -574,7 +574,7 @@ function readFilesRecursively(dir, rootDir, ignoreFilter) {
   return results;
 }
 
-// Dodamo sledenje zadnji obdelani mapi
+// Add tracking for the last processed folder
 let lastProcessedFolder = null;
 let isProcessing = false;
 

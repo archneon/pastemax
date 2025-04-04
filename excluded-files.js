@@ -10,7 +10,7 @@ module.exports = {
     "project.inlang/cache/**",
 
     // Exclude all description files
-    "ai/.descriptions/**",
+    // "ai/.descriptions/**",
 
     // NPM/Yarn/Node related
     "package-lock.json",

@@ -60,9 +60,9 @@ import {
 } from "./constants";
 import { PromptSectionDefinition } from "./types/promptConfigTypes";
 
-// Dodamo števec renderjev za debugging
+// Add render counter for debugging
 let renderCount = 0;
-// Sledimo sejni ID-ju, da ločimo med več naložitvami modula (hot reloading)
+// Track session ID to distinguish between multiple module loads (hot reloading)
 const APP_INSTANCE_ID = Math.random().toString(36).substring(2, 8);
 
 logger.info(
@@ -123,21 +123,21 @@ const categorizeFile = (
 };
 
 const App = () => {
-  // Sledimo številu renderiranj za pomoč pri diagnostiki
+  // Track the number of renders for diagnostic help
   renderCount++;
-  // Na začetku vsakega renderja zabeležimo podatke za debugging
+  // At the beginning of each render, log data for debugging
   logger.debug(`App render #${renderCount} (instance: ${APP_INSTANCE_ID})`);
 
-  // Določimo tip za lastSelectedFolder
+  // Define the type for lastSelectedFolder
   const lastSelectedFolder = getLastSelectedFolder();
-  // Uporabimo ustrezno tipizirano začetno vrednost brez eksplicitne tipizacije v useState
+  // Use the appropriately typed initial value without explicit typing in useState
   const [selectedFolder, setSelectedFolder] = useState(lastSelectedFolder);
 
-  // Reference za sledenje zahtevam za nalaganje datotek
+  // References for tracking file loading requests
   const initialLoadTriggered = useRef(false);
   const lastRequestedFolder = useRef(null);
 
-  // Naloži začetno stanje za trenutno izbrano mapo
+  // Load initial state for the currently selected folder
   const initialState = loadInitialState(selectedFolder);
 
   const [allFiles, setAllFiles] = useState([] as FileData[]);
@@ -154,13 +154,13 @@ const App = () => {
   );
   const [displayedFiles, setDisplayedFiles] = useState([] as FileData[]);
 
-  // Definiramo tip za statusni objekt
+  // Define the type for the status object
   type ProcessingStatus = {
     status: "idle" | "processing" | "complete" | "error";
     message: string;
   };
 
-  // Uporabimo ta tip pri useState
+  // Use this type with useState
   const [processingStatus, setProcessingStatus] = useState({
     status: "idle" as const,
     message: "",
@@ -176,7 +176,7 @@ const App = () => {
 
   // State for sort dropdown
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
-  // Bolj neposredna uporaba useRef
+  // More direct use of useRef
   const sortDropdownRef = useRef(null);
 
   // Check if we're running in Electron or browser environment
@@ -255,7 +255,7 @@ const App = () => {
     // 4. Add Overview (if enabled and content exists)
     if (includePromptOverview && overviewContent) {
       output += "==== SYSTEM_PROMPT_OVERVIEW ====\n";
-      const contentString = String(overviewContent); // Eksplicitno pretvorimo v string
+      const contentString = String(overviewContent); // Explicitly convert to string
       output += contentString.trim() + "\n\n"; // Trim just in case, add spacing
     }
 
@@ -341,16 +341,16 @@ const App = () => {
     formatMarker,
   ]);
 
-  // Update recent folders list - najprej definiramo funkcijo
+  // Update recent folders list - define the function first
   const updateRecentFolders = useCallback((folderPath: string) => {
     if (!folderPath) return;
 
     setRecentFolders((prev: string[]) => {
-      // Odstranimo duplicirane poti
+      // Remove duplicate paths
       const filtered = prev.filter(
         (path: string) => !arePathsEqual(path, folderPath)
       );
-      // Dodamo novo pot na začetek in omejimo število na MAX_RECENT_FOLDERS
+      // Add the new path to the beginning and limit the number to MAX_RECENT_FOLDERS
       return [normalizePath(folderPath), ...filtered].slice(
         0,
         MAX_RECENT_FOLDERS
@@ -358,7 +358,7 @@ const App = () => {
     });
   }, []);
 
-  // Apply filters and sorting to files - pretvorimo v useCallback za pravilno referenciranje
+  // Apply filters and sorting to files - convert to useCallback for correct referencing
   const applyFiltersAndSort = useCallback(
     (files: FileData[], sort: string, filter: string) => {
       let filtered = files;
@@ -396,7 +396,7 @@ const App = () => {
     [selectedFolder]
   );
 
-  // Premik in stabilizacija handler funkcij z useCallback, izven useEffect
+  // Move and stabilize handler functions with useCallback, outside useEffect
   const handleFolderSelected = useCallback(
     (folderPath: string) => {
       if (typeof folderPath === "string") {
@@ -405,10 +405,10 @@ const App = () => {
         );
         const normalizedPath = normalizePath(folderPath);
 
-        // Najprej nastavimo novo izbrano mapo
+        // First, set the newly selected folder
         setSelectedFolder(normalizedPath);
 
-        // Naložimo stanje za novo mapo iz localStorage
+        // Load the state for the new folder from localStorage
         const newState = loadInitialState(normalizedPath);
         setSelectedFiles(newState.selectedFiles);
         setExpandedNodes(newState.expandedNodes);
@@ -418,11 +418,11 @@ const App = () => {
         setIncludeFileTree(newState.includeFileTree);
         setIncludePromptOverview(newState.includePromptOverview);
 
-        // Počistimo sezname datotek
+        // Clear the file lists
         setAllFiles([]);
         setDisplayedFiles([]);
 
-        // Nastavimo status in zahtevamo seznam datotek
+        // Set the status and request the file list
         setProcessingStatus({
           status: "processing",
           message: "Requesting file list...",
@@ -431,7 +431,7 @@ const App = () => {
         // Update our request tracking references
         lastRequestedFolder.current = normalizedPath;
 
-        // Pošljemo zahtevo z novo strukturo
+        // Send the request with the new structure
         window.electron.ipcRenderer.send("request-file-list", {
           path: normalizedPath,
           forceRefresh: false,
@@ -458,12 +458,12 @@ const App = () => {
         `Received file list data: ${receivedFiles.length} files (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
       );
 
-      // POMEMBNO: Ponovno naložimo project state pred uporabo prejetih datotek
-      // To zagotovi, da imamo najnovejše vrednosti vseh nastavitev po Force Reload
+      // IMPORTANT: Reload the project state before using the received files
+      // This ensures we have the latest values for all settings after Force Reload
       if (selectedFolder) {
         const currentState = loadInitialState(selectedFolder);
 
-        // Posodobimo vse vrednosti iz localStorage
+        // Update all values from localStorage
         setSelectedFiles(currentState.selectedFiles);
         setExpandedNodes(currentState.expandedNodes);
         setSortOrder(currentState.sortOrder);
@@ -472,11 +472,11 @@ const App = () => {
         setIncludeFileTree(currentState.includeFileTree);
         setIncludePromptOverview(currentState.includePromptOverview);
         logger.info(
-          `Ponovno naloženo stanje iz localStorage: {selectedFiles: ${currentState.selectedFiles.length}, includeFileTree: ${currentState.includeFileTree}, includePromptOverview: ${currentState.includePromptOverview}} (render #${renderCount})`
+          `State reloaded from localStorage: {selectedFiles: ${currentState.selectedFiles.length}, includeFileTree: ${currentState.includeFileTree}, includePromptOverview: ${currentState.includePromptOverview}} (render #${renderCount})`
         );
       }
 
-      // Nadaljujemo z običajno obdelavo prejetih datotek
+      // Continue with the normal processing of received files
       const categorizedFiles = receivedFiles.map((file) => ({
         ...file,
         sectionId: categorizeFile(file, selectedFolder, PROMPT_SECTIONS),
@@ -496,7 +496,7 @@ const App = () => {
       sortOrder,
       searchTerm,
       applyFiltersAndSort,
-      loadInitialState,
+      loadInitialState, // Added dependency
     ]
   );
 
@@ -515,38 +515,38 @@ const App = () => {
     []
   );
 
-  // Obstoječi useEffect za IPC listener - zdaj samo registrira/odregistrira callbacke
-  // in uporabljamo referenco na en sam poslušalec za vsak kanal
+  // Existing useEffect for IPC listener - now just registers/unregisters callbacks
+  // and use a reference to a single listener for each channel
   useEffect(() => {
     if (!isElectron) return;
 
-    // Dodamo informacije za debugging
+    // Add information for debugging
     logger.debug(
       `Setting up IPC listeners (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
     );
 
-    // Nastavimo reference na vse naše poslušalce
-    // React StrictMode je izklopljen, vendar za vsak primer uporabimo iste reference
+    // Set references to all our listeners
+    // React StrictMode is off, but use the same references just in case
     const folderSelectedHandler = handleFolderSelected;
     const fileListDataHandler = handleFileListData;
     const processingStatusHandler = handleProcessingStatus;
 
-    // Registriramo vse poslušalce
-    logger.debug("Registracija IPC listenerjev - začetek");
+    // Register all listeners
+    logger.debug("Registering IPC listeners - start");
     window.electron.ipcRenderer.on("folder-selected", folderSelectedHandler);
-    logger.debug("Registrirali IPC listener: folder-selected");
+    logger.debug("Registered IPC listener: folder-selected");
 
     window.electron.ipcRenderer.on("file-list-data", fileListDataHandler);
-    logger.debug("Registrirali IPC listener: file-list-data");
+    logger.debug("Registered IPC listener: file-list-data");
 
     window.electron.ipcRenderer.on(
       "file-processing-status",
       processingStatusHandler
     );
-    logger.debug("Registrirali IPC listener: file-processing-status");
-    logger.debug("Registracija IPC listenerjev - zaključek");
+    logger.debug("Registered IPC listener: file-processing-status");
+    logger.debug("Registering IPC listeners - end");
 
-    // Čistilna funkcija - odstrani poslušalce
+    // Cleanup function - remove listeners
     return () => {
       logger.debug(
         `Cleaning up IPC listeners (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
@@ -556,19 +556,19 @@ const App = () => {
         "folder-selected",
         folderSelectedHandler
       );
-      logger.debug("Odstranjen IPC listener: folder-selected");
+      logger.debug("Removed IPC listener: folder-selected");
 
       window.electron.ipcRenderer.removeListener(
         "file-list-data",
         fileListDataHandler
       );
-      logger.debug("Odstranjen IPC listener: file-list-data");
+      logger.debug("Removed IPC listener: file-list-data");
 
       window.electron.ipcRenderer.removeListener(
         "file-processing-status",
         processingStatusHandler
       );
-      logger.debug("Odstranjen IPC listener: file-processing-status");
+      logger.debug("Removed IPC listener: file-processing-status");
     };
   }, [
     isElectron,
@@ -637,18 +637,18 @@ const App = () => {
       return;
     }
 
-    // Preveri, če je bilo zahtevano ponovno nalaganje (po CTRL+R)
+    // Check if a reload was requested (after CTRL+R)
     const wasRefreshRequested =
       localStorage.getItem("__force_refresh_requested") === "true";
     if (wasRefreshRequested) {
       logger.info(
         `Detected page refresh, will force reload folder: ${selectedFolder}`
       );
-      // Odstrani zastavico, da ne povzroči dodatnih ponovnih nalaganj
+      // Remove the flag so it doesn't cause additional reloads
       localStorage.removeItem("__force_refresh_requested");
     }
 
-    // Dodamo diagnostične informacije
+    // Add diagnostic information
     logger.debug(
       `Initial folder loading effect (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
     );
@@ -660,7 +660,7 @@ const App = () => {
       }, forceRefresh: ${wasRefreshRequested}`
     );
 
-    // Prevent duplicate loading, RAZEN če je bil zahtevan force refresh
+    // Prevent duplicate loading, EXCEPT if force refresh was requested
     if (
       initialLoadTriggered.current &&
       lastRequestedFolder.current === selectedFolder &&
@@ -686,7 +686,7 @@ const App = () => {
     initialLoadTriggered.current = true;
     lastRequestedFolder.current = selectedFolder;
 
-    // Pošljemo zahtevo za seznam datotek z ustrezno strukturo
+    // Send the request for the file list with the appropriate structure
     logger.debug(`Sending initial request-file-list for ${selectedFolder}`);
     window.electron.ipcRenderer.send("request-file-list", {
       path: selectedFolder,
@@ -793,31 +793,31 @@ const App = () => {
         } folder...`,
       });
 
-      // Pomembno: shranimo trenutno stanje izbranih datotek
+      // Important: save the current state of selected files
       const selectionToPreserve = [...selectedFiles];
 
-      // Generiramo unikatni ID za to operacijo za boljše sledenje
+      // Generate a unique ID for this operation for better tracking
       const operationId = Date.now().toString(36);
       logger.debug(`Starting ${action} operation (ID: ${operationId})`);
 
-      // Definiramo listener za trenutno osvežitev/ponovno nalaganje
+      // Define the listener for the current refresh/reload
       const handleDataForRefresh = (
         data: FileData[] | { files: FileData[]; totalTokenCount: number }
       ) => {
-        // Podprimo obe strukturi - array ali objekt s files poljem
+        // Support both structures - array or object with a files field
         const receivedFiles = Array.isArray(data) ? data : data.files;
 
         logger.info(
           `Received data for ${action} operation (ID: ${operationId}): ${receivedFiles.length} files`
         );
 
-        // Kategoriziraj datoteke - podobno kot v handleFileListData
+        // Categorize files - similar to handleFileListData
         const categorizedFiles = receivedFiles.map((file) => ({
           ...file,
           sectionId: categorizeFile(file, selectedFolder, PROMPT_SECTIONS),
         }));
 
-        // Obnovimo izbiro na podlagi shranjenih datotek in novega seznama datotek
+        // Restore the selection based on saved files and the new file list
         const validPaths = new Set(
           categorizedFiles.map((f) => normalizePath(f.path))
         );
@@ -836,7 +836,7 @@ const App = () => {
           } successfully`,
         });
 
-        // Odstranimo listener po uporabi
+        // Remove the listener after use
         logger.debug(
           `Removing temporary listener for ${action} operation (ID: ${operationId})`
         );
@@ -849,7 +849,7 @@ const App = () => {
         );
       };
 
-      // Dodamo listener preden pošljemo zahtevo
+      // Add the listener before sending the request
       logger.debug(
         `Adding temporary listener for ${action} operation (ID: ${operationId})`
       );
@@ -861,7 +861,7 @@ const App = () => {
       // Update request tracking reference
       lastRequestedFolder.current = selectedFolder;
 
-      // Zahtevamo osvežitev seznama datotek - zdaj vedno pošljemo forceRefresh=true
+      // Request refresh of the file list - now always send forceRefresh=true
       logger.debug(
         `Sending request-file-list with forceRefresh=true for ${action} operation (ID: ${operationId})`
       );
@@ -1005,10 +1005,10 @@ const App = () => {
   const selectRecentFolder = (folderPath: string) => {
     if (!folderPath || !isElectron) return;
 
-    // Nastavimo izbrano mapo
+    // Set the selected folder
     setSelectedFolder(folderPath);
 
-    // Naložimo stanje za to projektno mapo
+    // Load the state for this project folder
     const projectState = loadInitialState(folderPath);
     setSelectedFiles(projectState.selectedFiles);
     setExpandedNodes(projectState.expandedNodes);
@@ -1018,26 +1018,26 @@ const App = () => {
     setIncludeFileTree(projectState.includeFileTree);
     setIncludePromptOverview(projectState.includePromptOverview);
 
-    // Ponastavimo sezname datotek
+    // Reset the file lists
     setAllFiles([]);
     setDisplayedFiles([]);
 
-    // Nastavimo status
+    // Set the status
     setProcessingStatus({
       status: "processing",
-      message: "Nalagam datoteke iz izbrane mape...",
+      message: "Loading files from the selected folder...", // Translated string
     });
 
     // Update request tracking reference
     lastRequestedFolder.current = folderPath;
 
-    // Zahtevamo seznam datotek z novo strukturo
+    // Request the file list with the new structure
     window.electron.ipcRenderer.send("request-file-list", {
       path: folderPath,
       forceRefresh: false,
     });
 
-    // Posodobimo seznam nedavnih map
+    // Update the list of recent folders
     updateRecentFolders(folderPath);
   };
 
@@ -1053,11 +1053,11 @@ const App = () => {
 
   // Handle exit from the current folder
   const handleExitFolder = useCallback(() => {
-    // Ponastavimo vse na začetne vrednosti
+    // Reset everything to initial values
     saveLastSelectedFolder(null);
     setSelectedFolder(null);
 
-    // Naložimo privzeto stanje
+    // Load the default state
     const defaultState = loadInitialState(null);
     setSelectedFiles(defaultState.selectedFiles);
     setExpandedNodes(defaultState.expandedNodes);
@@ -1070,7 +1070,7 @@ const App = () => {
     setAllFiles([]);
     setDisplayedFiles([]);
     setProcessingStatus({ status: "idle", message: "" });
-  }, [loadInitialState]);
+  }, [loadInitialState]); // Added dependency
 
   // Handle clicks outside of sort dropdown
   useEffect(() => {

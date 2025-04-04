@@ -7,17 +7,17 @@ import "./styles/index.css";
 
 logger.info("main.tsx starting...");
 
-// Preveri, če smo v razvojnem načinu na osnovi dejanske vrednosti
+// Check if we are in development mode based on the actual value
 const isDev = process.env.NODE_ENV === "development";
 logger.debug(`Running in ${isDev ? "development" : "production"} mode`);
 
-// Nastavi zastavico za osvežitev, ki jo lahko zaznamo po ponovnem nalaganju
+// Set the refresh flag that can be detected after reloading
 const handlePageRefresh = () => {
   logger.debug("Page refresh detected, setting reload flag");
   localStorage.setItem("__force_refresh_requested", "true");
 };
 
-// Posluša dogodke, ki nakazujejo osvežitev strani
+// Listen for events indicating a page refresh
 window.addEventListener("beforeunload", handlePageRefresh);
 window.addEventListener("unload", handlePageRefresh);
 
@@ -28,14 +28,14 @@ try {
   } else {
     logger.info("Root element found. Calling ReactDOM.createRoot...");
 
-    // V razvojnem načinu odstranimo Strict Mode, da preprečimo dvojno renderiranje
+    // In development mode, remove Strict Mode to prevent double rendering
     if (isDev) {
       logger.info(
         "Development mode: Disabling StrictMode to prevent double renders"
       );
       ReactDOM.createRoot(rootElement).render(<App />);
     } else {
-      // V produkciji ohranimo Strict Mode za dodatne varnostne preglede
+      // In production, keep Strict Mode for additional safety checks
       ReactDOM.createRoot(rootElement).render(
         <React.StrictMode>
           <App />

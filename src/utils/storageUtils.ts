@@ -9,22 +9,22 @@ import {
 } from "../constants";
 
 /**
- * Glavni ključ za shranjevanje vseh projektnih stanj
+ * Main key for storing all project states
  */
 const PROJECT_STATES_KEY = "pastemax-project-states";
 
 /**
- * Ključ za shranjevanje zadnje izbranega direktorija
+ * Key for storing the last selected directory
  */
 const LAST_SELECTED_FOLDER_KEY = "pastemax-last-selected-folder";
 
 /**
- * Ključ za shranjevanje seznama nedavnih map
+ * Key for storing the list of recent folders
  */
 const RECENT_FOLDERS_KEY = "pastemax-recent-folders";
 
 /**
- * Struktura stanja posameznega projekta
+ * Structure of an individual project's state
  */
 interface ProjectState {
   selectedFiles?: string[];
@@ -38,12 +38,12 @@ interface ProjectState {
 }
 
 /**
- * Struktura za shranjevanje vseh projektnih stanj
+ * Structure for storing all project states
  */
 type AllProjectStates = Record<string, ProjectState>;
 
 /**
- * Privzete vrednosti za nov projekt
+ * Default values for a new project
  */
 const defaultProjectState: ProjectState = {
   selectedFiles: [],
@@ -56,14 +56,14 @@ const defaultProjectState: ProjectState = {
 };
 
 /**
- * Vrne pot zadnje izbranega direktorija
+ * Returns the path of the last selected directory
  */
 export function getLastSelectedFolder(): string | null {
   return localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_SELECTED_FOLDER);
 }
 
 /**
- * Shrani pot zadnje izbranega direktorija
+ * Saves the path of the last selected directory
  */
 export function saveLastSelectedFolder(folderPath: string | null): void {
   if (folderPath) {
@@ -74,7 +74,7 @@ export function saveLastSelectedFolder(folderPath: string | null): void {
 }
 
 /**
- * Naloži vsa projektna stanja iz localStorage
+ * Loads all project states from localStorage
  */
 export function loadProjectStates(): AllProjectStates {
   try {
@@ -83,13 +83,13 @@ export function loadProjectStates(): AllProjectStates {
     );
     return storedStates ? JSON.parse(storedStates) : {};
   } catch (error) {
-    console.error("Napaka pri branju projektnih stanj iz localStorage:", error);
+    console.error("Error reading project states from localStorage:", error);
     return {};
   }
 }
 
 /**
- * Shrani vsa projektna stanja v localStorage
+ * Saves all project states to localStorage
  */
 function saveAllProjectStates(states: AllProjectStates): void {
   try {
@@ -98,15 +98,12 @@ function saveAllProjectStates(states: AllProjectStates): void {
       JSON.stringify(states)
     );
   } catch (error) {
-    console.error(
-      "Napaka pri shranjevanju projektnih stanj v localStorage:",
-      error
-    );
+    console.error("Error saving project states to localStorage:", error);
   }
 }
 
 /**
- * Vrne stanje za določeno mapo projekta
+ * Returns the state for a specific project folder
  */
 export function getProjectState(folderPath: string | null): ProjectState {
   if (!folderPath) {
@@ -117,18 +114,18 @@ export function getProjectState(folderPath: string | null): ProjectState {
   const allStates = loadProjectStates();
   const projectState = allStates[normalized] || {};
 
-  // Združi s privzetimi vrednostmi
+  // Merge with default values
   return {
     ...defaultProjectState,
     ...projectState,
-    // Zagotovi, da so polja pravilno inicializirana
+    // Ensure fields are correctly initialized
     selectedFiles: projectState.selectedFiles ?? [],
     expandedNodes: projectState.expandedNodes ?? [],
   };
 }
 
 /**
- * Posodobi določeno lastnost projekta
+ * Updates a specific project property
  */
 export function updateProjectProperty<K extends keyof ProjectState>(
   folderPath: string | null,
@@ -140,7 +137,7 @@ export function updateProjectProperty<K extends keyof ProjectState>(
   const normalized = normalizePath(folderPath);
   const allStates = loadProjectStates();
 
-  // Zagotovi, da vnos za projekt obstaja
+  // Ensure the project entry exists
   if (!allStates[normalized]) {
     allStates[normalized] = { ...defaultProjectState };
   }
@@ -151,16 +148,16 @@ export function updateProjectProperty<K extends keyof ProjectState>(
     valueToSave = Array.from(value);
   }
 
-  // Posodobi lastnost
+  // Update the property
   allStates[normalized][propertyName] = valueToSave;
-  // Posodobi čas zadnjega dostopa
+  // Update the last accessed time
   allStates[normalized].lastAccessed = Date.now();
 
   saveAllProjectStates(allStates);
 }
 
 /**
- * Shrani celotno stanje projekta
+ * Saves the entire project state
  */
 export function saveProjectState(
   folderPath: string | null,
@@ -171,7 +168,7 @@ export function saveProjectState(
   const normalized = normalizePath(folderPath);
   const allStates = loadProjectStates();
 
-  // Združi novo stanje z obstoječim ali privzetim stanjem
+  // Merge the new state with the existing or default state
   allStates[normalized] = {
     ...(allStates[normalized] || defaultProjectState),
     ...newState,
@@ -182,7 +179,7 @@ export function saveProjectState(
 }
 
 /**
- * Naloži začetno stanje za uporabo v App.tsx
+ * Loads the initial state for use in App.tsx
  */
 export function loadInitialState(folderPath: string | null): Omit<
   Required<Omit<ProjectState, "lastAccessed">>,
@@ -205,20 +202,20 @@ export function loadInitialState(folderPath: string | null): Omit<
 }
 
 /**
- * Naloži seznam nedavnih map
+ * Loads the list of recent folders
  */
 export function loadRecentFolders(): string[] {
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.RECENT_FOLDERS);
     return saved ? JSON.parse(saved) : [];
   } catch (error) {
-    console.error("Napaka pri branju seznama nedavnih map:", error);
+    console.error("Error reading list of recent folders:", error);
     return [];
   }
 }
 
 /**
- * Shrani seznam nedavnih map
+ * Saves the list of recent folders
  */
 export function saveRecentFolders(folders: string[]): void {
   try {
@@ -227,6 +224,6 @@ export function saveRecentFolders(folders: string[]): void {
       JSON.stringify(folders)
     );
   } catch (error) {
-    console.error("Napaka pri shranjevanju seznama nedavnih map:", error);
+    console.error("Error saving list of recent folders:", error);
   }
 }

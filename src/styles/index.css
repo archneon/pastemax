@@ -310,7 +310,6 @@ input[type="search"]:focus {
   display: flex;
   align-items: center;
   padding: 2px 8px;
-  margin: 0px 0;
   border-radius: 4px;
   cursor: pointer;
   user-select: none;
@@ -325,6 +324,7 @@ input[type="search"]:focus {
 
 .tree-item.selected {
   /* background-color: var(--background-selected); */
+  /* margin-left: 16px; */
 }
 
 .tree-item-icon {
@@ -369,7 +369,7 @@ input[type="search"]:focus {
 }
 
 .tree-item-indent {
-  width: 16px;
+  width: 24px;
   flex-shrink: 0;
 }
 
@@ -636,7 +636,7 @@ input[type="search"]:focus {
   max-width: 100%;
 }
 
-/* Dodamo hover efekt na span znotraj .file-card-path */
+/* Add hover effect on span inside .file-card-path */
 .file-card-path span:hover {
   text-decoration: underline;
   cursor: pointer;
@@ -1047,7 +1047,7 @@ input[type="text"].search-input:focus {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Style za file-list-container-header */
+/* Style for file-list-container-header */
 .file-list-container-header {
   padding: 8px 12px;
   font-size: 14px;

@@ -4,30 +4,30 @@ import { SidebarProps, TreeNode } from "../types/FileTypes";
 import { MouseEventType, UseStateType } from "../types/ReactTypes";
 import SearchBar from "./SearchBar";
 import TreeItem from "./TreeItem";
-import {
-  FolderTree,
-  FileText,
-  X,
-  FolderOpen,
-  RefreshCw,
-  Search,
-  ChevronRight,
-  ChevronDown,
-  CheckSquare,
-  Square,
-  Copy,
-  List,
-  Package,
-  File,
-  RotateCcw,
-} from "lucide-react";
-import { FileData } from "../types/FileTypes";
-import {
-  basename,
-  getRelativePath,
-  comparePaths,
-  comparePathsStructurally,
-} from "../utils/pathUtils";
+// import {
+//   FolderTree,
+//   FileText,
+//   X,
+//   FolderOpen,
+//   RefreshCw,
+//   Search,
+//   ChevronRight,
+//   ChevronDown,
+//   CheckSquare,
+//   Square,
+//   Copy,
+//   List,
+//   Package,
+//   File,
+//   RotateCcw,
+// } from "lucide-react";
+// import { FileData } from "../types/FileTypes";
+// import {
+//   basename,
+//   getRelativePath,
+//   comparePaths,
+//   comparePathsStructurally,
+// } from "../utils/pathUtils";
 
 const Sidebar = ({
   selectedFolder,
