@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Before completing any task, always run `npx tsc --noEmit` to check for TypeScript errors. If any errors are found, fix them before considering the task complete.
