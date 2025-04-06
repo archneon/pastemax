@@ -44,12 +44,6 @@ import {
   PROMPT_SECTIONS,
   PROMPT_MARKERS,
   PROJECT_TREE_CONFIG,
-  DESCRIPTIONS_DIR,
-  OVERVIEW_FILENAME,
-  DEFAULT_SORT_ORDER,
-  DEFAULT_FILE_LIST_VIEW,
-  DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
-  DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
 } from "./constants";
 import { PromptSectionDefinition } from "./types/promptConfigTypes";
 import {
@@ -200,7 +194,6 @@ const App = () => {
     setIncludePromptOverview,
     removeRecentFolder,
     exitFolder,
-    // No need to get setNeedsFilesReload action, managed internally or via other actions
   } = useProjectStore.getState();
 
   // --- Local UI State ---
@@ -209,7 +202,7 @@ const App = () => {
     useRef<HTMLDivElement>(null);
 
   // --- Ref to track initial load request for the current folder ---
-  const loadTriggeredForFolderRef = useRef<string | null>(null); // Re-introduced Ref
+  const initialLoadRequestedRef = useRef<string | null>(null);
 
   const isElectron = window.electron !== undefined;
 
@@ -416,11 +409,10 @@ const App = () => {
       logger.warn("Folder selection not available in browser");
     }
   }, [isElectron]);
-
-  // Modified handler to reset ref
   const handleFolderSelectedIPC = useCallback(
     (folderPath: string) => {
-      loadTriggeredForFolderRef.current = null; // Reset tracker
+      // Reset the ref when a new folder is selected via IPC
+      initialLoadRequestedRef.current = null;
       if (typeof folderPath === "string") {
         logger.info(`IPC: folder-selected received: ${folderPath}`);
         setCurrentSelectedFolder(folderPath);
@@ -432,9 +424,8 @@ const App = () => {
         });
       }
     },
-    [setCurrentSelectedFolder, setStoreProcessingStatusAction] // Dependencies include actions
+    [setCurrentSelectedFolder, setStoreProcessingStatusAction]
   );
-
   const handleFileListDataIPC = useCallback(
     (receivedData: FileData[] | { files: FileData[] }) => {
       logger.info(`IPC: file-list-data received`);
@@ -456,7 +447,7 @@ const App = () => {
         message: `Loaded ${categorizedFiles.length} files`,
       });
     },
-    [setStoreAllFilesAction, setStoreProcessingStatusAction] // Dependencies include actions
+    [setStoreAllFilesAction, setStoreProcessingStatusAction]
   );
   const handleProcessingStatusIPC = useCallback(
     (status: ProcessingStatus) => {
@@ -465,43 +456,41 @@ const App = () => {
       );
       setStoreProcessingStatusAction(status);
     },
-    [setStoreProcessingStatusAction] // Dependency is action
+    [setStoreProcessingStatusAction]
   );
   const requestFileList = useCallback(
     (folderPath: string, forceRefresh: boolean = false) => {
       if (!isElectron || !folderPath) return;
       logger.info(
         `Handler: requestFileList for ${folderPath}, forceRefresh: ${forceRefresh}`
-      );
+      ); // Changed to info
       setStoreProcessingStatusAction({
         status: "processing",
         message: forceRefresh
           ? "Reloading folder..."
           : "Requesting folder data...",
-      });
+      }); // Adjusted message
       window.electron.ipcRenderer.send("request-file-list", {
         path: folderPath,
         forceRefresh: forceRefresh,
       });
     },
-    [isElectron, setStoreProcessingStatusAction] // Dependency is action
+    [isElectron, setStoreProcessingStatusAction]
   );
-
-  // Modified handler to reset ref
   const refreshFolder = useCallback(() => {
     const currentSelectedFolder =
       useProjectStore.getState().currentSelectedFolder;
     if (currentSelectedFolder) {
       logger.info(`Handler: refreshFolder called for ${currentSelectedFolder}`);
-      loadTriggeredForFolderRef.current = null; // Reset tracker
+      // Mark that a new request is needed even if it's the same folder
+      initialLoadRequestedRef.current = null;
       requestFileList(currentSelectedFolder, true);
     }
-  }, [requestFileList]); // Dependency is stable callback
-
+  }, [requestFileList]);
   const reloadFolder = useCallback(() => {
     logger.info(`Handler: reloadFolder called`);
     refreshFolder();
-  }, [refreshFolder]); // Dependency is stable callback
+  }, [refreshFolder]);
   const handleSortChange = useCallback(
     (newSort: string) => {
       logger.info(`Handler: handleSortChange called with ${newSort}`);
@@ -509,33 +498,31 @@ const App = () => {
       setSortDropdownOpen(false);
     },
     [setSortOrder]
-  ); // Dependency is action
+  );
   const handleSearchChange = useCallback(
     (newSearch: string) => {
       logger.info(`Handler: handleSearchChange called with "${newSearch}"`);
       setSearchTerm(newSearch);
     },
     [setSearchTerm]
-  ); // Dependency is action
+  );
   const handleViewChange = useCallback(
     (newView: "structured" | "flat") => {
       logger.info(`Handler: handleViewChange called with ${newView}`);
       setFileListView(newView);
     },
     [setFileListView]
-  ); // Dependency is action
-
-  // Modified handler to reset ref
+  );
   const selectRecentFolder = useCallback(
     (folderPath: string) => {
       if (!isElectron) return;
-      loadTriggeredForFolderRef.current = null; // Reset tracker
+      // Reset the ref when selecting a recent folder
+      initialLoadRequestedRef.current = null;
       logger.info(`Handler: selectRecentFolder called with ${folderPath}`);
       setCurrentSelectedFolder(folderPath);
     },
     [isElectron, setCurrentSelectedFolder]
-  ); // Dependencies include action
-
+  );
   const removeRecentFolderHandler = useCallback(
     (folderPath: string, event: MouseEvent) => {
       event.stopPropagation();
@@ -545,14 +532,13 @@ const App = () => {
       removeRecentFolder(folderPath);
     },
     [removeRecentFolder]
-  ); // Dependency is action
-
-  // Modified handler to reset ref
+  );
   const handleExitFolder = useCallback(() => {
     logger.info(`Handler: handleExitFolder called`);
-    loadTriggeredForFolderRef.current = null; // Reset tracker
+    // Reset the ref when exiting a folder
+    initialLoadRequestedRef.current = null;
     exitFolder();
-  }, [exitFolder]); // Dependency is action
+  }, [exitFolder]);
 
   // --- Effects ---
   useEffect(() => {
@@ -593,92 +579,48 @@ const App = () => {
     handleFolderSelectedIPC,
     handleFileListDataIPC,
     handleProcessingStatusIPC,
-  ]); // Dependencies are stable callbacks
+  ]); // Dependencies are the stable callbacks
 
-  // *** REVISED useEffect for Initial/HMR File Load ***
+  // Simplified useEffect for Initial File Load
   useEffect(() => {
     logger.debug(
-      `Render #${renderCount}: Running useEffect for file load check. ` +
-        `Hydrated: ${hasHydrated}, Electron: ${isElectron}, Folder: ${selectedFolder}, ` +
-        `Status: ${processingStatus.status}, AllFiles Length: ${allFiles.length}, ` +
-        `LoadTriggeredFor: ${loadTriggeredForFolderRef.current}`
+      `Render #${renderCount}: Running useEffect for initial file load check. Hydrated: ${hasHydrated}, Electron: ${isElectron}, Folder: ${selectedFolder}, InitialLoadRequestedFor: ${initialLoadRequestedRef.current}`
     );
-
-    // Conditions for loading: Hydrated, Electron context, Folder selected
     if (hasHydrated && isElectron && selectedFolder) {
-      // Determine if we need to trigger a load
-      let shouldTriggerLoad = false;
-      let reason = "";
-
-      // Reason 1: Folder changed and load hasn't been triggered for this new folder yet
-      if (loadTriggeredForFolderRef.current !== selectedFolder) {
-        shouldTriggerLoad = true;
-        reason = "New folder selected or initial load post-hydration";
-      }
-      // Reason 2: HMR Reset Detected - Folder is selected, but files are empty (and load was previously triggered for this folder)
-      // Check status to avoid triggering during initial processing or after legitimate empty folder load
-      else if (
-        loadTriggeredForFolderRef.current === selectedFolder &&
-        allFiles.length === 0 &&
-        (processingStatus.status === "complete" ||
-          processingStatus.status === "idle")
-      ) {
-        shouldTriggerLoad = true;
-        reason = "Files missing after HMR or potentially empty folder loaded";
-        // If reason is HMR, we definitely want to reload. If it's empty folder, reloading won't hurt.
-      }
-
-      // If we determined a load is needed and we are not currently processing
-      if (shouldTriggerLoad && processingStatus.status !== "processing") {
+      // If the selected folder is DIFFERENT from the one we last requested initial load for...
+      if (initialLoadRequestedRef.current !== selectedFolder) {
         logger.info(
-          `Effect: Triggering requestFileList for ${selectedFolder}. Reason: ${reason}.`
+          `Effect: Triggering INITIAL requestFileList for ${selectedFolder}.`
         );
-        requestFileList(selectedFolder, false); // Request files
-        // Mark this folder as having had its load triggered (or re-triggered)
-        loadTriggeredForFolderRef.current = selectedFolder;
-      } else if (
-        shouldTriggerLoad &&
-        processingStatus.status === "processing"
-      ) {
-        logger.debug(
-          `Effect: Load needed for ${selectedFolder} (Reason: ${reason}), but skipping because status is already 'processing'.`
-        );
+        requestFileList(selectedFolder, false);
+        // Mark this folder as having had its initial load requested
+        initialLoadRequestedRef.current = selectedFolder;
       } else {
         logger.debug(
-          `Effect: No file load needed for ${selectedFolder}. Load already triggered: ${
-            loadTriggeredForFolderRef.current === selectedFolder
-          }, Files length: ${allFiles.length}, Status: ${
-            processingStatus.status
-          }`
+          `Effect: Initial load for ${selectedFolder} already done/in progress.`
         );
       }
     } else if (hasHydrated && !selectedFolder) {
-      // --- Condition to clear files ---
-      // If hydrated and no folder is selected (e.g., after exitFolder), clear files and reset ref.
-      if (allFiles.length > 0 || loadTriggeredForFolderRef.current !== null) {
+      // Clear files and reset ref if no folder selected
+      const currentAllFiles = useProjectStore.getState().allFiles;
+      if (
+        currentAllFiles.length > 0 ||
+        initialLoadRequestedRef.current !== null
+      ) {
         logger.debug(
-          "Effect: No folder selected, clearing allFiles and resetting load trigger ref."
+          "Effect: No folder selected, clearing allFiles and load request tracker."
         );
         setStoreAllFilesAction([]);
-        loadTriggeredForFolderRef.current = null; // Reset tracker when folder becomes null
+        initialLoadRequestedRef.current = null;
       }
     }
-
-    // --- Waiting for hydration ---
-    if (!hasHydrated) {
-      logger.debug(`Render #${renderCount}: Waiting for store hydration...`);
-    }
-    // Dependencies: Run when folder changes, hydration status changes, or processing finishes, or allFiles length changes.
-    // requestFileList and setStoreAllFilesAction are stable actions.
   }, [
     selectedFolder,
     hasHydrated,
     isElectron,
-    processingStatus.status,
-    allFiles.length,
     requestFileList,
     setStoreAllFilesAction,
-  ]);
+  ]); // Dependencies: run when folder or hydration changes
 
   useEffect(() => {
     // *** LOG: useEffect for Sort Dropdown Click Outside ***

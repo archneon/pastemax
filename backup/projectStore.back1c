@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, StateStorage } from "zustand/middleware";
 import {
-  ProjectState, // Ensure this interface includes _needsFilesReload and setNeedsFilesReload
+  ProjectState,
   PerProjectState,
   ProcessingStatus,
 } from "../types/projectStateTypes"; // Corrected import path/filename
@@ -19,7 +19,6 @@ import { normalizePath, arePathsEqual } from "../utils/pathUtils";
 import logger from "../utils/logger";
 
 // Define the default state for a single project when it's first created
-// Export it so App.tsx can import it for default values in selectors
 export const getDefaultPerProjectState = (): Omit<
   PerProjectState,
   "lastAccessed"
@@ -34,7 +33,6 @@ export const getDefaultPerProjectState = (): Omit<
 });
 
 // --- Zustand Store Definition ---
-// Ensure ProjectState interface includes _needsFilesReload and setNeedsFilesReload
 export const useProjectStore = create<ProjectState>()(
   persist(
     (set, get) => ({
@@ -49,57 +47,22 @@ export const useProjectStore = create<ProjectState>()(
 
       // --- Internal State ---
       _hasHydrated: false,
-      _needsFilesReload: false, // <-- Initialize NEW state flag
 
       // --- Actions ---
 
       hydrateStore: () => {
-        // Check if a folder was selected upon hydration using get()
-        const folderSelectedOnHydrate = !!get().currentSelectedFolder;
-        logger.info(
-          `Store hydrated. Folder selected on hydrate: ${folderSelectedOnHydrate}`
-        );
-        set({
-          _hasHydrated: true,
-          // Set flag to trigger reload IF a folder was loaded from storage
-          _needsFilesReload: folderSelectedOnHydrate,
-        });
-      },
-
-      // Action to manually clear the reload flag (called from useEffect in App)
-      setNeedsFilesReload: (needsReload: boolean) => {
-        // Only update if the value actually changes
-        if (get()._needsFilesReload !== needsReload) {
-          logger.debug(`Action: setNeedsFilesReload to ${needsReload}`);
-          set({ _needsFilesReload: needsReload });
-        } else {
-          logger.debug(
-            `Action: setNeedsFilesReload skipped, value already ${needsReload}`
-          );
+        set({ _hasHydrated: true });
+        logger.info("Store has been hydrated from localStorage.");
+        const currentFolder = get().currentSelectedFolder;
+        if (currentFolder) {
+          logger.debug(`Store hydrated with active folder: ${currentFolder}`);
         }
       },
 
       setCurrentSelectedFolder: (folderPath: string | null) => {
         const normalizedPath = folderPath ? normalizePath(folderPath) : null;
-        const previouslySelectedFolder = get().currentSelectedFolder; // Get folder before setting
 
-        // Avoid unnecessary state updates if the folder hasn't changed
-        if (normalizedPath === previouslySelectedFolder) {
-          logger.debug(
-            `Action: setCurrentSelectedFolder skipped, folder already set to ${normalizedPath}`
-          );
-          // Even if folder is the same, maybe trigger reload if needed (e.g., after HMR)
-          if (normalizedPath && !get()._needsFilesReload) {
-            // If folder is the same, but reload flag is false, set it to true to trigger potential HMR reload logic
-            // This might be too aggressive, let's rely on the effect in App for HMR for now.
-            // set({ _needsFilesReload: true });
-          }
-          return;
-        }
-
-        logger.info(
-          `Action: setCurrentSelectedFolder changing from ${previouslySelectedFolder} to ${normalizedPath}`
-        );
+        logger.info(`Action: setCurrentSelectedFolder to ${normalizedPath}`);
 
         // Directly update state, including lastAccessed if needed
         set((state: ProjectState) => {
@@ -145,10 +108,9 @@ export const useProjectStore = create<ProjectState>()(
             projects: updatedProjects, // Use the potentially updated projects map
             allFiles: [], // Clear files from previous folder
             processingStatus: normalizedPath
-              ? { status: "idle", message: "" } // Start as idle, effect will trigger processing
+              ? { status: "processing", message: "Requesting folder data..." }
               : { status: "idle", message: "" },
-            // Set needs reload flag when folder changes (and it's not null)
-            _needsFilesReload: !!normalizedPath,
+            // Do NOT reset initialLoadRequestedRef here, let useEffect handle it based on folder change
           };
         }); // End of set
 
@@ -159,16 +121,17 @@ export const useProjectStore = create<ProjectState>()(
       }, // End of setCurrentSelectedFolder
 
       addRecentFolder: (folderPath: string) => {
+        // Added type
         const normalizedPath = normalizePath(folderPath);
         set((state: ProjectState) => {
+          // Added type for state
           const filteredRecents = state.recentFolders.filter(
-            (p: string) => !arePathsEqual(p, normalizedPath)
+            (p: string) => !arePathsEqual(p, normalizedPath) // Added type for p
           );
           const newRecentFolders = [normalizedPath, ...filteredRecents].slice(
             0,
             MAX_RECENT_FOLDERS
           );
-          // Check if update is needed before setting state
           if (
             JSON.stringify(state.recentFolders) !==
             JSON.stringify(newRecentFolders)
@@ -176,16 +139,18 @@ export const useProjectStore = create<ProjectState>()(
             logger.debug(`Action: addRecentFolder - updating recent folders.`);
             return { recentFolders: newRecentFolders };
           }
-          return {}; // No change
+          return {};
         });
       },
 
       removeRecentFolder: (folderPath: string) => {
+        // Added type
         const normalizedPath = normalizePath(folderPath);
         logger.info(`Action: removeRecentFolder - ${normalizedPath}`);
         set((state: ProjectState) => ({
+          // Added type for state
           recentFolders: state.recentFolders.filter(
-            (p: string) => !arePathsEqual(p, normalizedPath)
+            (p: string) => !arePathsEqual(p, normalizedPath) // Added type for p
           ),
         }));
       },
@@ -196,18 +161,17 @@ export const useProjectStore = create<ProjectState>()(
           currentSelectedFolder: null,
           allFiles: [],
           processingStatus: { status: "idle", message: "" },
-          _needsFilesReload: false, // <-- Reset flag on exit
         });
       },
 
       setAllFiles: (files: FileData[]) => {
+        // Added type
         logger.debug(`Action: setAllFiles, received ${files.length} files`);
-        // Optionally, reset the reload flag here IF this is the only way files are loaded initially
-        // However, the useEffect in App which calls setNeedsFilesReload(false) is probably better.
-        set({ allFiles: files /*, _needsFilesReload: false */ });
+        set({ allFiles: files });
       },
 
       setProcessingStatus: (status: ProcessingStatus) => {
+        // Added type
         if (JSON.stringify(get().processingStatus) !== JSON.stringify(status)) {
           logger.debug(
             `Action: setProcessingStatus - ${status.status}: ${status.message}`
@@ -220,6 +184,7 @@ export const useProjectStore = create<ProjectState>()(
         key: K,
         value: PerProjectState[K]
       ) => {
+        // Added generic types
         const currentFolder = get().currentSelectedFolder;
         if (!currentFolder) {
           logger.warn(
@@ -228,6 +193,7 @@ export const useProjectStore = create<ProjectState>()(
           return;
         }
         set((state: ProjectState) => {
+          // Added type for state
           const projectState = state.projects[currentFolder];
           if (!projectState) {
             logger.error(
@@ -236,6 +202,7 @@ export const useProjectStore = create<ProjectState>()(
             return {};
           }
           const updatedProjectState: PerProjectState = {
+            // Explicit type
             ...projectState,
             [key]: value,
             lastAccessed: Date.now(),
@@ -244,6 +211,7 @@ export const useProjectStore = create<ProjectState>()(
             ...state.projects,
             [currentFolder]: updatedProjectState,
           };
+          // Use debug instead of trace
           logger.debug(
             `Updating project state for ${currentFolder}: setting ${key}`
           );
@@ -252,20 +220,22 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       toggleFileSelection: (filePath: string) => {
+        // Added type
         const currentFolder = get().currentSelectedFolder;
         if (!currentFolder) return;
         const projectState = get().projects[currentFolder];
         if (!projectState) return;
+
         const normalizedPath = normalizePath(filePath);
         const currentSelection = projectState.selectedFiles;
         const isSelected = currentSelection.some((p: string) =>
           arePathsEqual(p, normalizedPath)
-        );
-        let newSelection: string[];
+        ); // Added type for p
+        let newSelection: string[]; // Explicit type
         if (isSelected) {
           newSelection = currentSelection.filter(
             (p: string) => !arePathsEqual(p, normalizedPath)
-          );
+          ); // Added type for p
         } else {
           newSelection = [...currentSelection, normalizedPath];
         }
@@ -273,34 +243,42 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       toggleFolderSelection: (folderPath: string, select: boolean) => {
+        // Added types
         const currentFolder = get().currentSelectedFolder;
         if (!currentFolder) return;
         const projectState = get().projects[currentFolder];
         const allFiles = get().allFiles;
         if (!projectState || !allFiles || allFiles.length === 0) return;
+
         const normalizedFolderPath = normalizePath(folderPath);
         const filesToToggle = allFiles
           .filter(
-            (file: FileData) =>
+            (
+              file: FileData // Added type
+            ) =>
               !file.isBinary &&
               !file.isSkipped &&
               normalizePath(file.path).startsWith(normalizedFolderPath + "/") &&
               normalizePath(file.path) !== normalizedFolderPath
           )
-          .map((file: FileData) => normalizePath(file.path));
+          .map((file: FileData) => normalizePath(file.path)); // Added type
+
         if (filesToToggle.length === 0) {
           logger.debug(`No files found to toggle in folder: ${folderPath}`);
           return;
         }
+
         let currentSelection = [...projectState.selectedFiles];
         const selectionSet = new Set(currentSelection);
+
         if (select) {
           logger.debug(`Selecting files in folder: ${folderPath}`);
-          filesToToggle.forEach((p: string) => selectionSet.add(p));
+          filesToToggle.forEach((p: string) => selectionSet.add(p)); // Added type for p
         } else {
           logger.debug(`Deselecting files in folder: ${folderPath}`);
-          filesToToggle.forEach((p: string) => selectionSet.delete(p));
+          filesToToggle.forEach((p: string) => selectionSet.delete(p)); // Added type for p
         }
+
         const newSelectionArray = Array.from(selectionSet);
         if (
           JSON.stringify(currentSelection) !== JSON.stringify(newSelectionArray)
@@ -314,14 +292,16 @@ export const useProjectStore = create<ProjectState>()(
         if (!currentFolder) return;
         const allFiles = get().allFiles;
         if (!allFiles || allFiles.length === 0) return;
+
         const selectableFiles = allFiles
-          .filter((file: FileData) => !file.isBinary && !file.isSkipped)
-          .map((file: FileData) => normalizePath(file.path));
+          .filter((file: FileData) => !file.isBinary && !file.isSkipped) // Added type
+          .map((file: FileData) => normalizePath(file.path)); // Added type
+
         const currentSelection =
           get().projects[currentFolder]?.selectedFiles || [];
         if (
           selectableFiles.length !== currentSelection.length ||
-          !selectableFiles.every((p: string) => currentSelection.includes(p))
+          !selectableFiles.every((p: string) => currentSelection.includes(p)) // Added type for p
         ) {
           get()._updateCurrentProjectState("selectedFiles", selectableFiles);
         }
@@ -338,30 +318,37 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       setSortOrder: (sortOrder: string) => {
+        // Added type
         get()._updateCurrentProjectState("sortOrder", sortOrder);
       },
+
       setSearchTerm: (searchTerm: string) => {
+        // Added type
         get()._updateCurrentProjectState("searchTerm", searchTerm);
       },
+
       setFileListView: (view: "structured" | "flat") => {
+        // Added type
         get()._updateCurrentProjectState("fileListView", view);
       },
 
       toggleExpandedNode: (nodePath: string) => {
+        // Added type
         const currentFolder = get().currentSelectedFolder;
         if (!currentFolder) return;
         const projectState = get().projects[currentFolder];
         if (!projectState) return;
+
         const normalizedPath = normalizePath(nodePath);
         const currentExpanded = projectState.expandedNodes;
         const isExpanded = currentExpanded.some((p: string) =>
           arePathsEqual(p, normalizedPath)
-        );
-        let newExpanded: string[];
+        ); // Added type for p
+        let newExpanded: string[]; // Explicit type
         if (isExpanded) {
           newExpanded = currentExpanded.filter(
             (p: string) => !arePathsEqual(p, normalizedPath)
-          );
+          ); // Added type for p
         } else {
           newExpanded = [...currentExpanded, normalizedPath];
         }
@@ -369,9 +356,12 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       setIncludeFileTree: (include: boolean) => {
+        // Added type
         get()._updateCurrentProjectState("includeFileTree", include);
       },
+
       setIncludePromptOverview: (include: boolean) => {
+        // Added type
         get()._updateCurrentProjectState("includePromptOverview", include);
       },
     }),
@@ -379,18 +369,39 @@ export const useProjectStore = create<ProjectState>()(
       name: "pastemax-storage",
       storage: createJSONStorage(() => localStorage),
       partialize: (state: ProjectState) => ({
+        // Added type for state
         currentSelectedFolder: state.currentSelectedFolder,
         projects: state.projects,
         recentFolders: state.recentFolders,
       }),
       onRehydrateStorage: () => {
+        // This function receives the rehydrated state (or undefined if error/empty)
+        // and should return void or undefined.
         return (state?: ProjectState, error?: unknown) => {
+          // Added types for state and error
           if (error) {
-            logger.error("Failed to rehydrate state:", error);
+            logger.error("Failed to rehydrate state from localStorage:", error);
+            setTimeout(() => {
+              useProjectStore.getState().hydrateStore(); // Call action on the store instance
+              logger.warn(
+                "Marking store as hydrated despite rehydration error."
+              );
+            }, 0);
+          } else if (state) {
+            // State successfully rehydrated
+            logger.info("Store successfully rehydrated.");
+            // Trigger the hydrateStore action AFTER the rehydration process completes.
+            // The state object passed here is the already rehydrated state.
+            setTimeout(() => state.hydrateStore(), 0);
+          } else {
+            // Storage was empty or invalid, but no specific error was thrown.
+            logger.warn(
+              "Rehydration completed but storage was empty or invalid. Initializing _hasHydrated."
+            );
+            // Trigger hydrateStore action even if storage was empty,
+            // it will set _hasHydrated to true.
+            setTimeout(() => useProjectStore.getState().hydrateStore(), 0);
           }
-          // Always attempt to call hydrateStore after timeout
-          // hydrateStore itself will handle logic based on rehydrated state
-          setTimeout(() => useProjectStore.getState().hydrateStore(), 0);
         };
       },
       version: 1,
@@ -399,6 +410,7 @@ export const useProjectStore = create<ProjectState>()(
 );
 
 // --- Selectors ---
+
 export const selectCurrentProjectState = (
   state: ProjectState
 ): PerProjectState => {
@@ -412,18 +424,21 @@ export const selectCurrentProjectState = (
   }
   return projectSpecificState;
 };
+
 export const selectAllFiles = (state: ProjectState): FileData[] =>
   state.allFiles;
+
 export const selectProcessingStatus = (state: ProjectState): ProcessingStatus =>
   state.processingStatus;
+
 export const selectHasHydrated = (state: ProjectState): boolean =>
   state._hasHydrated;
+
 export const selectCurrentSelectedFolder = (
   state: ProjectState
 ): string | null => state.currentSelectedFolder;
+
 export const selectRecentFolders = (state: ProjectState): string[] =>
   state.recentFolders;
-export const selectNeedsFilesReload = (state: ProjectState): boolean =>
-  state._needsFilesReload; // <-- NEW Selector
 
 logger.info("Zustand project store defined.");

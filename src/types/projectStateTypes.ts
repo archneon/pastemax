@@ -6,7 +6,7 @@ import { FileData } from "./FileTypes";
  */
 export interface PerProjectState {
   selectedFiles: string[];
-  expandedNodes: string[];
+  expandedNodes: string[]; // Kept as array for JSON compatibility
   sortOrder: string;
   searchTerm: string;
   fileListView: "structured" | "flat";
@@ -16,7 +16,16 @@ export interface PerProjectState {
 }
 
 /**
+ * Represents the status of background file processing or other operations.
+ */
+export interface ProcessingStatus {
+  status: "idle" | "processing" | "complete" | "error";
+  message: string;
+}
+
+/**
  * Represents the overall state of the application managed by Zustand.
+ * Includes persisted, transient, and internal state, along with actions.
  */
 export interface ProjectState {
   // --- Persisted State ---
@@ -28,8 +37,9 @@ export interface ProjectState {
   allFiles: FileData[];
   processingStatus: ProcessingStatus;
 
-  // --- Internal State ---
+  // --- Internal State (Not persisted) ---
   _hasHydrated: boolean;
+  _needsFilesReload: boolean;
 
   // --- Actions (Functions to modify state) ---
   hydrateStore: () => void;
@@ -37,6 +47,7 @@ export interface ProjectState {
   addRecentFolder: (folderPath: string) => void;
   removeRecentFolder: (folderPath: string) => void;
   exitFolder: () => void;
+  setNeedsFilesReload: (needsReload: boolean) => void;
   setAllFiles: (files: FileData[]) => void;
   setProcessingStatus: (status: ProcessingStatus) => void;
   toggleFileSelection: (filePath: string) => void;
@@ -49,17 +60,11 @@ export interface ProjectState {
   toggleExpandedNode: (nodePath: string) => void;
   setIncludeFileTree: (include: boolean) => void;
   setIncludePromptOverview: (include: boolean) => void;
-  // Internal helper - not part of the public interface but defined in store
+
+  // --- Internal helper function used within the store's actions ---
+  // It MUST be defined in the interface if accessed via get() inside actions.
   _updateCurrentProjectState: <K extends keyof PerProjectState>(
     key: K,
     value: PerProjectState[K]
-  ) => void;
-}
-
-/**
- * Represents the status of background file processing or other operations.
- */
-export interface ProcessingStatus {
-  status: "idle" | "processing" | "complete" | "error";
-  message: string;
+  ) => void; // <-- ADDED BACK
 }
