@@ -1,176 +1,228 @@
-import React, { useRef, useEffect } from "react";
-import { TreeItemProps, TreeNode } from "../types/FileTypes";
-import {
-  MouseEventType,
-  ChangeEventType,
-  UseRefType,
-} from "../types/ReactTypes";
-import { ChevronRight, File, Folder } from "lucide-react";
-import { arePathsEqual } from "../utils/pathUtils";
+// src/components/TreeItem.tsx
+import React, { useRef, useEffect, useMemo, useCallback } from "react";
+import { TreeNode } from "../types/FileTypes"; // Keep TreeNode
+// Removed unused type imports like MouseEventType, ChangeEventType if not needed elsewhere in this file specifically
+import { ChevronRight, File } from "lucide-react"; // Removed Folder if not used
+import { arePathsEqual, normalizePath } from "../utils/pathUtils";
+import { useProjectStore } from "../store/projectStore";
 
-const TreeItem = ({
-  node,
-  selectedFiles,
-  toggleFileSelection,
-  toggleFolderSelection,
-  toggleExpanded,
-}: TreeItemProps) => {
-  const { id, name, path, type, level, isExpanded, fileData } = node;
-  const checkboxRef = useRef(null) as UseRefType<HTMLInputElement>;
+interface TreeItemProps {
+  node: TreeNode;
+}
 
-  const isSelected =
-    type === "file" &&
-    selectedFiles.some((selectedPath) => arePathsEqual(selectedPath, path));
+const TreeItem = ({ node }: TreeItemProps) => {
+  const {
+    id,
+    name,
+    path,
+    type,
+    level,
+    isExpanded: isExpandedFromNode,
+    fileData,
+  } = node;
+  const checkboxRef = useRef<HTMLInputElement>(null);
 
-  // Recursive function to check if all files in a directory are selected
-  const areAllFilesInDirectorySelected = (node: TreeNode): boolean => {
-    if (node.type === "file") {
-      return selectedFiles.some((selectedPath) =>
-        arePathsEqual(selectedPath, node.path)
-      );
-    }
+  // --- Get State & Actions from Store ---
+  const selectedFiles = useProjectStore(
+    (state) => state.projects[state.currentSelectedFolder!]?.selectedFiles ?? []
+  );
+  const { toggleFileSelection, toggleFolderSelection, toggleExpandedNode } =
+    useProjectStore.getState();
 
-    if (
-      node.type === "directory" &&
-      node.children &&
-      node.children.length > 0
-    ) {
-      return node.children.every((child) =>
-        areAllFilesInDirectorySelected(child)
-      );
-    }
+  // --- State Calculations (using selectedFiles from store) ---
+  const selectedPathSet = useMemo(
+    () => new Set(selectedFiles.map(normalizePath)),
+    [selectedFiles]
+  );
 
-    return false;
-  };
+  const isSelected = useMemo(
+    () => type === "file" && selectedPathSet.has(normalizePath(path)),
+    [type, path, selectedPathSet]
+  );
 
-  // Recursive function to check if any file in a directory is selected
-  const isAnyFileInDirectorySelected = (node: TreeNode): boolean => {
-    if (node.type === "file") {
-      return selectedFiles.some((selectedPath) =>
-        arePathsEqual(selectedPath, node.path)
-      );
-    }
+  // --- Corrected Helper Functions ---
 
-    if (
-      node.type === "directory" &&
-      node.children &&
-      node.children.length > 0
-    ) {
-      return node.children.some((child) => isAnyFileInDirectorySelected(child));
-    }
+  // Helper to recursively get all *selectable* file paths within a directory node
+  const getAllSelectableFilePaths = useCallback(
+    (dirNode: TreeNode): string[] => {
+      let paths: string[] = [];
+      if (!dirNode.children) {
+        return paths; // Return empty array if no children
+      }
+      for (const child of dirNode.children) {
+        if (
+          child.type === "file" &&
+          child.fileData &&
+          !child.fileData.isBinary &&
+          !child.fileData.isSkipped
+        ) {
+          paths.push(normalizePath(child.path));
+        } else if (child.type === "directory") {
+          // Correctly concatenate results from recursive calls
+          paths = paths.concat(getAllSelectableFilePaths(child));
+        }
+      }
+      return paths; // Ensure array is always returned
+    },
+    []
+  ); // Empty dependency array is correct here
 
-    return false;
-  };
+  // Check if *any* file within this directory (or subdirectories) is selected
+  const isAnyFileInDirectorySelected = useMemo(() => {
+    if (type !== "directory") return false; // Only for directories
 
-  // For directories, check if all children are selected
-  const isDirectorySelected =
-    type === "directory" && node.children && node.children.length > 0
-      ? areAllFilesInDirectorySelected(node)
-      : false;
+    // Recursive check function
+    const checkRecursively = (currentNode: TreeNode): boolean => {
+      if (currentNode.type === "file") {
+        return selectedPathSet.has(normalizePath(currentNode.path));
+      }
+      // If it's a directory with children, check if *some* child matches
+      if (currentNode.children && currentNode.children.length > 0) {
+        return currentNode.children.some((child) => checkRecursively(child));
+      }
+      // If it's an empty directory or unexpected type, return false
+      return false;
+    };
+    // Start the check from the current node
+    return checkRecursively(node);
+  }, [type, node, selectedPathSet]); // Dependencies: node structure and selection set
 
-  // Check if some but not all files in this directory are selected
-  const isDirectoryPartiallySelected =
-    type === "directory" && node.children && node.children.length > 0
-      ? isAnyFileInDirectorySelected(node) && !isDirectorySelected
-      : false;
+  // Check if all selectable files within this directory are selected
+  const isDirectorySelected = useMemo(() => {
+    if (type !== "directory") return false; // Only applicable to directories
 
-  // Update the indeterminate state manually whenever it changes
+    const allChildFiles = getAllSelectableFilePaths(node);
+    // Directory is selected if it contains at least one selectable file,
+    // and *all* of those selectable files are present in the selectedPathSet.
+    return (
+      allChildFiles.length > 0 &&
+      allChildFiles.every((filePath) => selectedPathSet.has(filePath))
+    );
+  }, [type, node, selectedPathSet, getAllSelectableFilePaths]); // Dependencies: node, selection, and the helper function
+
+  // Determine if the directory is partially selected (some selected, but not all)
+  // Ensure boolean values are used
+  const isDirectoryPartiallySelected: boolean = useMemo(
+    () =>
+      type === "directory" &&
+      isAnyFileInDirectorySelected &&
+      !isDirectorySelected,
+    [type, isAnyFileInDirectorySelected, isDirectorySelected]
+  ); // Explicitly boolean based on boolean inputs
+
+  // --- Effects ---
   useEffect(() => {
     if (checkboxRef.current) {
+      // Assign the calculated boolean value
       checkboxRef.current.indeterminate = isDirectoryPartiallySelected;
     }
   }, [isDirectoryPartiallySelected]);
 
-  const handleToggle = (e: MouseEventType<HTMLDivElement>) => {
-    e.stopPropagation();
-    if (type === "directory") {
-      toggleExpanded(path);
-    }
-  };
+  // --- Other Logic ---
+  const isDisabled = useMemo(
+    () => !!(fileData && (fileData.isBinary || fileData.isSkipped)),
+    [fileData]
+  );
+  const isExcludedByDefault = useMemo(
+    () => !!(fileData && fileData.excludedByDefault),
+    [fileData]
+  );
+  // Use the correctly passed prop from Sidebar (which got it from store state)
+  const isNodeExpanded = type === "directory" && isExpandedFromNode;
 
-  const handleItemClick = (e: MouseEventType<HTMLDivElement>) => {
+  // --- Event Handlers ---
+  const handleToggle = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Use React.MouseEvent
+      e.stopPropagation();
+      if (type === "directory") {
+        toggleExpandedNode(path);
+      }
+    },
+    [type, path, toggleExpandedNode]
+  );
+
+  const handleItemClick = useCallback(() => {
     if (type === "directory") {
-      toggleExpanded(path);
+      toggleExpandedNode(path);
     } else if (type === "file" && !isDisabled) {
       toggleFileSelection(path);
     }
-  };
+  }, [type, path, isDisabled, toggleExpandedNode, toggleFileSelection]);
 
-  const handleCheckboxChange = (e: ChangeEventType<HTMLInputElement>) => {
-    e.stopPropagation();
-    if (type === "file") {
-      toggleFileSelection(path);
-    } else if (type === "directory") {
-      toggleFolderSelection(path, e.target.checked);
-    }
-  };
+  const handleCheckboxChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Use React.ChangeEvent
+      e.stopPropagation();
+      const isChecked = e.target.checked;
+      if (type === "file" && !isDisabled) {
+        toggleFileSelection(path); // Action handles the logic
+      } else if (type === "directory") {
+        toggleFolderSelection(path, isChecked);
+      }
+    },
+    [type, path, isDisabled, toggleFileSelection, toggleFolderSelection]
+  );
 
-  // Check if file is binary or otherwise unselectable
-  const isDisabled = fileData ? fileData.isBinary || fileData.isSkipped : false;
-
-  // Check if the file is excluded by default (but still selectable)
-  const isExcludedByDefault = fileData?.excludedByDefault || false;
-
+  // --- Render ---
   return (
     <div
       className={`tree-item ${isSelected ? "selected" : ""} ${
         isExcludedByDefault ? "excluded-by-default" : ""
       }`}
-      // style={{ marginLeft: `${level * 16}px` }}
       style={{ paddingLeft: `${level * 8}px` }}
       onClick={handleItemClick}
+      role="treeitem"
+      aria-selected={isSelected}
+      aria-expanded={type === "directory" ? isNodeExpanded : undefined}
+      aria-disabled={isDisabled}
     >
+      {/* Toggle chevron */}
       {type === "directory" && (
         <div
-          className={`tree-item-toggle ${isExpanded ? "expanded" : ""}`}
+          className={`tree-item-toggle ${isNodeExpanded ? "expanded" : ""}`}
           onClick={handleToggle}
-          aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+          aria-label={isNodeExpanded ? "Collapse folder" : "Expand folder"}
+          role="button"
         >
           <ChevronRight size={16} />
         </div>
       )}
-
+      {/* Indentation */}
       {type === "file" && <div className="tree-item-indent"></div>}
-
+      {/* Checkbox */}
       <input
         type="checkbox"
         className="tree-item-checkbox"
-        checked={type === "file" ? isSelected : isDirectorySelected}
+        // Assign calculated boolean values
+        checked={!!(type === "file" ? isSelected : isDirectorySelected)} // Ensure boolean
         ref={checkboxRef}
         onChange={handleCheckboxChange}
         disabled={isDisabled}
         onClick={(e) => e.stopPropagation()}
+        aria-label={`Select ${type} ${name}`}
       />
-
+      {/* Content */}
       <div className="tree-item-content">
-        {/* <div className="tree-item-icon">
-          {type === "directory" ? <Folder size={16} /> : <File size={16} />}
-        </div> */}
-
-        {/* <div className="tree-item-icon">
-          {type === "directory" ? "" : <File size={14} />}
-        </div> */}
-
         {type === "file" && (
           <div className="tree-item-icon">
-            <File size={14} />
+            {" "}
+            <File size={14} />{" "}
           </div>
         )}
-
         <div className="tree-item-name">{name}</div>
-
         {fileData && fileData.tokenCount > 0 && (
           <span className="tree-item-tokens">
-            (~{fileData.tokenCount.toLocaleString()})
+            {" "}
+            (~{fileData.tokenCount.toLocaleString()}){" "}
           </span>
         )}
-
         {isDisabled && fileData && (
           <span className="tree-item-badge">
-            {fileData.isBinary ? "Binary" : "Skipped"}
+            {" "}
+            {fileData.isBinary ? "Binary" : "Skipped"}{" "}
           </span>
         )}
-
         {!isDisabled && isExcludedByDefault && (
           <span className="tree-item-badge excluded">Excluded</span>
         )}
