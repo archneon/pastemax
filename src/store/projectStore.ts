@@ -1,0 +1,488 @@
+// src/store/projectStore.ts
+import { create } from "zustand";
+import { persist, createJSONStorage, StateStorage } from "zustand/middleware";
+import {
+  ProjectState,
+  PerProjectState,
+  ProcessingStatus,
+} from "../types/projectStateTypes"; // Corrected import path/filename
+import { FileData } from "../types/FileTypes";
+import {
+  DEFAULT_SORT_ORDER,
+  DEFAULT_FILE_LIST_VIEW,
+  DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
+  DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
+  MAX_RECENT_FOLDERS,
+  // LOCAL_STORAGE_KEYS, // Only needed if used directly, middleware handles name
+} from "../constants";
+import { normalizePath, arePathsEqual } from "../utils/pathUtils";
+import logger from "../utils/logger";
+
+// Define the default state for a single project when it's first created
+export const getDefaultPerProjectState = (): Omit<
+  PerProjectState,
+  "lastAccessed"
+> => ({
+  selectedFiles: [],
+  expandedNodes: [],
+  sortOrder: DEFAULT_SORT_ORDER,
+  searchTerm: "",
+  fileListView: DEFAULT_FILE_LIST_VIEW,
+  includeFileTree: DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
+  includePromptOverview: DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
+});
+
+// --- Zustand Store Definition ---
+export const useProjectStore = create<ProjectState>()(
+  persist(
+    (set, get) => ({
+      // --- Persisted State ---
+      currentSelectedFolder: null,
+      projects: {},
+      recentFolders: [],
+
+      // --- Transient State ---
+      allFiles: [],
+      processingStatus: { status: "idle", message: "" },
+
+      // --- Internal State ---
+      _hasHydrated: false,
+
+      // --- Actions ---
+
+      hydrateStore: () => {
+        set({ _hasHydrated: true });
+        logger.info("Store has been hydrated from localStorage.");
+        const currentFolder = get().currentSelectedFolder;
+        if (currentFolder) {
+          logger.debug(`Store hydrated with active folder: ${currentFolder}`);
+        }
+      },
+
+      setCurrentSelectedFolder: (folderPath: string | null) => {
+        const normalizedPath = folderPath ? normalizePath(folderPath) : null;
+
+        logger.info(`Action: setCurrentSelectedFolder to ${normalizedPath}`);
+
+        // Directly update state, including lastAccessed if needed
+        set((state: ProjectState) => {
+          const currentProjects = state.projects;
+          let targetProjectState = normalizedPath
+            ? currentProjects[normalizedPath]
+            : null;
+          let updatedProjects = currentProjects; // Start with current projects
+
+          if (normalizedPath) {
+            if (!targetProjectState) {
+              // Project is new, create its state
+              logger.debug(
+                `Creating default state for new project: ${normalizedPath}`
+              );
+              targetProjectState = {
+                ...getDefaultPerProjectState(),
+                lastAccessed: Date.now(),
+              };
+              // Add new project state immutably
+              updatedProjects = {
+                ...currentProjects,
+                [normalizedPath]: targetProjectState,
+              };
+            } else {
+              // Project exists, update its lastAccessed time immutably
+              logger.debug(
+                `Updating lastAccessed for existing project: ${normalizedPath}`
+              );
+              updatedProjects = {
+                ...currentProjects,
+                [normalizedPath]: {
+                  ...targetProjectState,
+                  lastAccessed: Date.now(),
+                },
+              };
+            }
+          }
+
+          // Return the complete state update
+          return {
+            currentSelectedFolder: normalizedPath,
+            projects: updatedProjects, // Use the potentially updated projects map
+            allFiles: [], // Clear files from previous folder
+            processingStatus: normalizedPath
+              ? { status: "processing", message: "Requesting folder data..." }
+              : { status: "idle", message: "" },
+            // Do NOT reset initialLoadRequestedRef here, let useEffect handle it based on folder change
+          };
+        }); // End of set
+
+        // Update recent folders AFTER setting the state
+        if (normalizedPath) {
+          get().addRecentFolder(normalizedPath);
+        }
+      }, // End of setCurrentSelectedFolder
+
+      // setCurrentSelectedFolder: (folderPath: string | null) => {
+      //   // Added type
+      //   const normalizedPath = folderPath ? normalizePath(folderPath) : null;
+      //   const currentProjects = get().projects;
+      //   let targetProjectState = normalizedPath
+      //     ? currentProjects[normalizedPath]
+      //     : null;
+
+      //   logger.info(`Action: setCurrentSelectedFolder to ${normalizedPath}`);
+
+      //   if (normalizedPath && !targetProjectState) {
+      //     logger.debug(
+      //       `Creating default state for new project: ${normalizedPath}`
+      //     );
+      //     targetProjectState = {
+      //       ...getDefaultPerProjectState(),
+      //       lastAccessed: Date.now(),
+      //     };
+      //     // Use functional update to correctly add new project state
+      //     set((state: ProjectState) => ({
+      //       // Added type for state
+      //       projects: {
+      //         ...state.projects,
+      //         [normalizedPath]: targetProjectState!,
+      //       },
+      //     }));
+      //   } else if (normalizedPath && targetProjectState) {
+      //     // Correctly call internal helper which handles immutability
+      //     get()._updateCurrentProjectState("lastAccessed", Date.now());
+      //   }
+
+      //   set({
+      //     currentSelectedFolder: normalizedPath,
+      //     allFiles: [],
+      //     processingStatus: normalizedPath
+      //       ? { status: "processing", message: "Requesting folder data..." }
+      //       : { status: "idle", message: "" },
+      //   });
+
+      //   if (normalizedPath) {
+      //     get().addRecentFolder(normalizedPath);
+      //   }
+      // },
+
+      addRecentFolder: (folderPath: string) => {
+        // Added type
+        const normalizedPath = normalizePath(folderPath);
+        set((state: ProjectState) => {
+          // Added type for state
+          const filteredRecents = state.recentFolders.filter(
+            (p: string) => !arePathsEqual(p, normalizedPath) // Added type for p
+          );
+          const newRecentFolders = [normalizedPath, ...filteredRecents].slice(
+            0,
+            MAX_RECENT_FOLDERS
+          );
+          if (
+            JSON.stringify(state.recentFolders) !==
+            JSON.stringify(newRecentFolders)
+          ) {
+            logger.debug(`Action: addRecentFolder - updating recent folders.`);
+            return { recentFolders: newRecentFolders };
+          }
+          return {};
+        });
+      },
+
+      removeRecentFolder: (folderPath: string) => {
+        // Added type
+        const normalizedPath = normalizePath(folderPath);
+        logger.info(`Action: removeRecentFolder - ${normalizedPath}`);
+        set((state: ProjectState) => ({
+          // Added type for state
+          recentFolders: state.recentFolders.filter(
+            (p: string) => !arePathsEqual(p, normalizedPath) // Added type for p
+          ),
+        }));
+      },
+
+      exitFolder: () => {
+        logger.info("Action: exitFolder");
+        set({
+          currentSelectedFolder: null,
+          allFiles: [],
+          processingStatus: { status: "idle", message: "" },
+        });
+      },
+
+      setAllFiles: (files: FileData[]) => {
+        // Added type
+        logger.debug(`Action: setAllFiles, received ${files.length} files`);
+        set({ allFiles: files });
+      },
+
+      setProcessingStatus: (status: ProcessingStatus) => {
+        // Added type
+        if (JSON.stringify(get().processingStatus) !== JSON.stringify(status)) {
+          logger.debug(
+            `Action: setProcessingStatus - ${status.status}: ${status.message}`
+          );
+          set({ processingStatus: status });
+        }
+      },
+
+      _updateCurrentProjectState: <K extends keyof PerProjectState>(
+        key: K,
+        value: PerProjectState[K]
+      ) => {
+        // Added generic types
+        const currentFolder = get().currentSelectedFolder;
+        if (!currentFolder) {
+          logger.warn(
+            `Cannot update project state: No folder selected. Attempted to set ${key}.`
+          );
+          return;
+        }
+        set((state: ProjectState) => {
+          // Added type for state
+          const projectState = state.projects[currentFolder];
+          if (!projectState) {
+            logger.error(
+              `Cannot update project state: State for ${currentFolder} not found. Attempted to set ${key}.`
+            );
+            return {};
+          }
+          const updatedProjectState: PerProjectState = {
+            // Explicit type
+            ...projectState,
+            [key]: value,
+            lastAccessed: Date.now(),
+          };
+          const updatedProjects = {
+            ...state.projects,
+            [currentFolder]: updatedProjectState,
+          };
+          // Use debug instead of trace
+          logger.debug(
+            `Updating project state for ${currentFolder}: setting ${key}`
+          );
+          return { projects: updatedProjects };
+        });
+      },
+
+      toggleFileSelection: (filePath: string) => {
+        // Added type
+        const currentFolder = get().currentSelectedFolder;
+        if (!currentFolder) return;
+        const projectState = get().projects[currentFolder];
+        if (!projectState) return;
+
+        const normalizedPath = normalizePath(filePath);
+        const currentSelection = projectState.selectedFiles;
+        const isSelected = currentSelection.some((p: string) =>
+          arePathsEqual(p, normalizedPath)
+        ); // Added type for p
+        let newSelection: string[]; // Explicit type
+        if (isSelected) {
+          newSelection = currentSelection.filter(
+            (p: string) => !arePathsEqual(p, normalizedPath)
+          ); // Added type for p
+        } else {
+          newSelection = [...currentSelection, normalizedPath];
+        }
+        get()._updateCurrentProjectState("selectedFiles", newSelection);
+      },
+
+      toggleFolderSelection: (folderPath: string, select: boolean) => {
+        // Added types
+        const currentFolder = get().currentSelectedFolder;
+        if (!currentFolder) return;
+        const projectState = get().projects[currentFolder];
+        const allFiles = get().allFiles;
+        if (!projectState || !allFiles || allFiles.length === 0) return;
+
+        const normalizedFolderPath = normalizePath(folderPath);
+        const filesToToggle = allFiles
+          .filter(
+            (
+              file: FileData // Added type
+            ) =>
+              !file.isBinary &&
+              !file.isSkipped &&
+              normalizePath(file.path).startsWith(normalizedFolderPath + "/") &&
+              normalizePath(file.path) !== normalizedFolderPath
+          )
+          .map((file: FileData) => normalizePath(file.path)); // Added type
+
+        if (filesToToggle.length === 0) {
+          logger.debug(`No files found to toggle in folder: ${folderPath}`);
+          return;
+        }
+
+        let currentSelection = [...projectState.selectedFiles];
+        const selectionSet = new Set(currentSelection);
+
+        if (select) {
+          logger.debug(`Selecting files in folder: ${folderPath}`);
+          filesToToggle.forEach((p: string) => selectionSet.add(p)); // Added type for p
+        } else {
+          logger.debug(`Deselecting files in folder: ${folderPath}`);
+          filesToToggle.forEach((p: string) => selectionSet.delete(p)); // Added type for p
+        }
+
+        const newSelectionArray = Array.from(selectionSet);
+        if (
+          JSON.stringify(currentSelection) !== JSON.stringify(newSelectionArray)
+        ) {
+          get()._updateCurrentProjectState("selectedFiles", newSelectionArray);
+        }
+      },
+
+      selectAllFiles: () => {
+        const currentFolder = get().currentSelectedFolder;
+        if (!currentFolder) return;
+        const allFiles = get().allFiles;
+        if (!allFiles || allFiles.length === 0) return;
+
+        const selectableFiles = allFiles
+          .filter((file: FileData) => !file.isBinary && !file.isSkipped) // Added type
+          .map((file: FileData) => normalizePath(file.path)); // Added type
+
+        const currentSelection =
+          get().projects[currentFolder]?.selectedFiles || [];
+        if (
+          selectableFiles.length !== currentSelection.length ||
+          !selectableFiles.every((p: string) => currentSelection.includes(p)) // Added type for p
+        ) {
+          get()._updateCurrentProjectState("selectedFiles", selectableFiles);
+        }
+      },
+
+      deselectAllFiles: () => {
+        const currentFolder = get().currentSelectedFolder;
+        if (!currentFolder) return;
+        const currentSelection =
+          get().projects[currentFolder]?.selectedFiles || [];
+        if (currentSelection.length > 0) {
+          get()._updateCurrentProjectState("selectedFiles", []);
+        }
+      },
+
+      setSortOrder: (sortOrder: string) => {
+        // Added type
+        get()._updateCurrentProjectState("sortOrder", sortOrder);
+      },
+
+      setSearchTerm: (searchTerm: string) => {
+        // Added type
+        get()._updateCurrentProjectState("searchTerm", searchTerm);
+      },
+
+      setFileListView: (view: "structured" | "flat") => {
+        // Added type
+        get()._updateCurrentProjectState("fileListView", view);
+      },
+
+      toggleExpandedNode: (nodePath: string) => {
+        // Added type
+        const currentFolder = get().currentSelectedFolder;
+        if (!currentFolder) return;
+        const projectState = get().projects[currentFolder];
+        if (!projectState) return;
+
+        const normalizedPath = normalizePath(nodePath);
+        const currentExpanded = projectState.expandedNodes;
+        const isExpanded = currentExpanded.some((p: string) =>
+          arePathsEqual(p, normalizedPath)
+        ); // Added type for p
+        let newExpanded: string[]; // Explicit type
+        if (isExpanded) {
+          newExpanded = currentExpanded.filter(
+            (p: string) => !arePathsEqual(p, normalizedPath)
+          ); // Added type for p
+        } else {
+          newExpanded = [...currentExpanded, normalizedPath];
+        }
+        get()._updateCurrentProjectState("expandedNodes", newExpanded);
+      },
+
+      setIncludeFileTree: (include: boolean) => {
+        // Added type
+        get()._updateCurrentProjectState("includeFileTree", include);
+      },
+
+      setIncludePromptOverview: (include: boolean) => {
+        // Added type
+        get()._updateCurrentProjectState("includePromptOverview", include);
+      },
+    }),
+    {
+      name: "pastemax-storage",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state: ProjectState) => ({
+        // Added type for state
+        currentSelectedFolder: state.currentSelectedFolder,
+        projects: state.projects,
+        recentFolders: state.recentFolders,
+      }),
+      onRehydrateStorage: () => {
+        // This function receives the rehydrated state (or undefined if error/empty)
+        // and should return void or undefined.
+        return (state?: ProjectState, error?: unknown) => {
+          // Added types for state and error
+          if (error) {
+            logger.error("Failed to rehydrate state from localStorage:", error);
+            setTimeout(() => {
+              useProjectStore.getState().hydrateStore(); // Call action on the store instance
+              logger.warn(
+                "Marking store as hydrated despite rehydration error."
+              );
+            }, 0);
+          } else if (state) {
+            // State successfully rehydrated
+            logger.info("Store successfully rehydrated.");
+            // Trigger the hydrateStore action AFTER the rehydration process completes.
+            // The state object passed here is the already rehydrated state.
+            setTimeout(() => state.hydrateStore(), 0);
+          } else {
+            // Storage was empty or invalid, but no specific error was thrown.
+            logger.warn(
+              "Rehydration completed but storage was empty or invalid. Initializing _hasHydrated."
+            );
+            // Trigger hydrateStore action even if storage was empty,
+            // it will set _hasHydrated to true.
+            setTimeout(() => useProjectStore.getState().hydrateStore(), 0);
+          }
+        };
+      },
+      version: 1,
+    }
+  )
+);
+
+// --- Selectors ---
+
+export const selectCurrentProjectState = (
+  state: ProjectState
+): PerProjectState => {
+  const currentFolder = state.currentSelectedFolder;
+  const projectSpecificState = currentFolder
+    ? state.projects?.[currentFolder]
+    : null;
+  if (!projectSpecificState) {
+    const defaults = getDefaultPerProjectState();
+    return { ...defaults, lastAccessed: 0 };
+  }
+  return projectSpecificState;
+};
+
+export const selectAllFiles = (state: ProjectState): FileData[] =>
+  state.allFiles;
+
+export const selectProcessingStatus = (state: ProjectState): ProcessingStatus =>
+  state.processingStatus;
+
+export const selectHasHydrated = (state: ProjectState): boolean =>
+  state._hasHydrated;
+
+export const selectCurrentSelectedFolder = (
+  state: ProjectState
+): string | null => state.currentSelectedFolder;
+
+export const selectRecentFolders = (state: ProjectState): string[] =>
+  state.recentFolders;
+
+logger.info("Zustand project store defined.");

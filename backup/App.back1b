@@ -1,0 +1,401 @@
+// src/App.tsx
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  MouseEvent,
+} from "react";
+import Sidebar from "./components/Sidebar";
+import FileList from "./components/FileList";
+import CopyButton from "./components/CopyButton";
+import FileTreeToggle from "./components/FileTreeToggle";
+import { FileData, SidebarProps } from "./types/FileTypes";
+import { ThemeProvider } from "./context/ThemeContext";
+import ThemeToggle from "./components/ThemeToggle";
+import FileListToggle from "./components/FileListToggle";
+import logger from "./utils/logger";
+import {
+  generateAsciiFileTree,
+  normalizePath,
+  arePathsEqual,
+  comparePathsStructurally,
+  basename,
+  getRelativePath,
+} from "./utils/pathUtils";
+import {
+  X,
+  FolderOpen,
+  RefreshCw,
+  LogOut,
+  ChartNoAxesColumnIncreasingIcon,
+  ChartNoAxesColumnDecreasingIcon,
+  SortAsc,
+  SortDesc,
+  ArrowUpDown,
+  FolderUp,
+  FolderDown,
+} from "lucide-react";
+import {
+  PROMPT_SECTIONS,
+  PROMPT_MARKERS,
+  PROJECT_TREE_CONFIG,
+  DESCRIPTIONS_DIR,
+  OVERVIEW_FILENAME,
+  DEFAULT_SORT_ORDER,
+  DEFAULT_FILE_LIST_VIEW,
+  DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
+  DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
+} from "./constants";
+import { PromptSectionDefinition } from "./types/promptConfigTypes";
+import {
+  useProjectStore,
+  selectCurrentSelectedFolder,
+  selectRecentFolders,
+  selectAllFiles as selectStoreAllFilesHook,
+  selectProcessingStatus,
+  selectHasHydrated,
+  getDefaultPerProjectState // Imported function
+} from "./store/projectStore";
+import { ProcessingStatus, PerProjectState } from "./types/projectStateTypes";
+import { shallow } from 'zustand/shallow';
+
+let renderCount = 0;
+const APP_INSTANCE_ID = Math.random().toString(36).substring(2, 8);
+
+logger.info(`App.tsx component function starting (instance: ${APP_INSTANCE_ID})`);
+
+declare global { /* ... */ }
+
+interface SortOptionConfig { /* ... */ }
+const categorizeFile = (/* ... */);
+
+// --- App Component ---
+const App = () => {
+  renderCount++;
+  logger.debug(`App render #${renderCount} (instance: ${APP_INSTANCE_ID})`);
+
+  // --- State from Zustand Store ---
+  const hasHydrated = useProjectStore(selectHasHydrated);
+  const selectedFolder = useProjectStore(selectCurrentSelectedFolder);
+  const recentFolders = useProjectStore(selectRecentFolders);
+  const allFiles = useProjectStore(selectStoreAllFilesHook);
+  const processingStatus = useProjectStore(selectProcessingStatus);
+
+  // --- Define the type for the object returned by the selector ---
+  type CurrentProjectSlice = Pick<
+    PerProjectState,
+    | 'selectedFiles'
+    | 'sortOrder'
+    | 'searchTerm'
+    | 'fileListView'
+    | 'includeFileTree'
+    | 'includePromptOverview'
+  >;
+
+  // Use shallow selector with explicit return type for the selector function
+  const {
+    selectedFiles,
+    sortOrder,
+    searchTerm,
+    fileListView,
+    includeFileTree,
+    includePromptOverview,
+  } = useProjectStore<CurrentProjectSlice>( // Specify the slice type here
+    (state): CurrentProjectSlice => { // Explicit return type for selector function
+      const currentFolder = state.currentSelectedFolder;
+      const projectState = currentFolder ? state.projects?.[currentFolder] : null;
+      if (!projectState) {
+          const defaults = getDefaultPerProjectState();
+          // Return the defined slice type
+          return {
+              selectedFiles: defaults.selectedFiles,
+              sortOrder: defaults.sortOrder,
+              searchTerm: defaults.searchTerm,
+              fileListView: defaults.fileListView,
+              includeFileTree: defaults.includeFileTree,
+              includePromptOverview: defaults.includePromptOverview,
+          };
+      }
+      // Return the defined slice type
+      return {
+          selectedFiles: projectState.selectedFiles,
+          sortOrder: projectState.sortOrder,
+          searchTerm: projectState.searchTerm,
+          fileListView: projectState.fileListView,
+          includeFileTree: projectState.includeFileTree,
+          includePromptOverview: projectState.includePromptOverview,
+      };
+  }, shallow); // <-- Pass shallow as the second argument
+
+  // --- Actions from Zustand Store ---
+  const {
+    setCurrentSelectedFolder,
+    setAllFiles: setStoreAllFilesAction,
+    setProcessingStatus: setStoreProcessingStatusAction,
+    toggleFileSelection,
+    setSortOrder,
+    setSearchTerm,
+    setFileListView,
+    setIncludeFileTree,
+    setIncludePromptOverview,
+    removeRecentFolder,
+    exitFolder,
+  } = useProjectStore.getState();
+
+  // --- Local UI State ---
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const sortDropdownRef: React.RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
+
+  const isElectron = window.electron !== undefined;
+
+  // --- Derived State & Calculations ---
+  const displayedFiles = useMemo(() => {
+    logger.debug(`Recalculating displayedFiles. allFiles: ${allFiles.length}, sort: ${sortOrder}, filter: ${searchTerm}`); // Use debug
+    // ... (rest of the calculation remains the same) ...
+    let filtered = allFiles;
+    if (searchTerm) {
+        const lowerFilter = searchTerm.toLowerCase();
+        filtered = allFiles.filter(
+            (file) =>
+            file.name.toLowerCase().includes(lowerFilter) ||
+            getRelativePath(file.path, selectedFolder).toLowerCase().includes(lowerFilter)
+        );
+    }
+    const [sortKey, sortDir] = sortOrder.split("-");
+    const sorted = [...filtered].sort((a, b) => {
+        let comparison = 0;
+        if (sortKey === "name") comparison = a.name.localeCompare(b.name);
+        else if (sortKey === "tokens") comparison = (a.tokenCount || 0) - (b.tokenCount || 0);
+        else if (sortKey === "size") comparison = (a.size || 0) - (b.size || 0);
+        else if (sortKey === "path") comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
+        return sortDir === "asc" ? comparison : -comparison;
+    });
+    return sorted;
+  }, [allFiles, sortOrder, searchTerm, selectedFolder]);
+
+  const totalSelectedTokens = useMemo(() => {
+    logger.debug(`Recalculating totalSelectedTokens. selectedFiles: ${selectedFiles.length}`); // Use debug
+    // ... (rest of the calculation remains the same) ...
+    const selectedFilesSet = new Set(selectedFiles.map(normalizePath));
+    return allFiles.reduce((total, file) => {
+        if (selectedFilesSet.has(normalizePath(file.path))) {
+            return total + (file.tokenCount || 0);
+        }
+        return total;
+    }, 0);
+  }, [selectedFiles, allFiles]);
+
+  // --- Format marker helper ---
+  const formatMarker = useCallback(
+    (
+      template: string,
+      context: { section_name?: string; file_path?: string }
+    ): string => {
+        let result = template;
+        if (context.section_name !== undefined) result = result.replace("{section_name}", context.section_name);
+        if (context.file_path !== undefined) result = result.replace("{file_path}", context.file_path);
+        return result;
+    },
+    []
+  );
+
+  // --- Generate Content for Copying ---
+   const getSelectedFilesContent = useCallback(() => {
+       logger.debug(`Generating content for copying. selectedFiles: ${selectedFiles.length}`);
+       // Use state values directly available in the hook's scope
+       // These values (selectedFiles, sortOrder, etc.) are now guaranteed to be stable
+       // between re-renders unless they actually change, thanks to the shallow selector.
+
+       const selectedPathSet = new Set(selectedFiles.map(normalizePath));
+
+       const contentFiles = allFiles.filter(
+           (file: FileData) =>
+               selectedPathSet.has(normalizePath(file.path)) &&
+               !file.isBinary && !file.isSkipped && !file.descriptionForSectionId &&
+               !file.isOverviewTemplate && !file.isProjectTreeDescription
+       );
+
+       const descriptionMap: Record<string, string> = {};
+       let overviewContent: string | null = null;
+       allFiles.forEach((file: FileData) => {
+           if (file.content) {
+               if (file.descriptionForSectionId) descriptionMap[file.descriptionForSectionId] = file.content;
+               else if (file.isProjectTreeDescription) descriptionMap["project_tree"] = file.content;
+               else if (file.isOverviewTemplate) overviewContent = file.content;
+           }
+       });
+
+       if (contentFiles.length === 0 && !includeFileTree && !includePromptOverview) {
+           return "No text files selected, or tree/overview not included.";
+       }
+
+       const [sortKey, sortDir] = sortOrder.split("-");
+       const sortedContentFiles = [...contentFiles].sort((a, b) => {
+           let comparison = 0;
+           if (sortKey === "name") comparison = a.name.localeCompare(b.name);
+           else if (sortKey === "tokens") comparison = (a.tokenCount || 0) - (b.tokenCount || 0);
+           else if (sortKey === "size") comparison = (a.size || 0) - (b.size || 0);
+           else if (sortKey === "path") comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
+           return sortDir === "asc" ? comparison : -comparison;
+       });
+
+       let output = "";
+       const markers = PROMPT_MARKERS;
+
+       if (includePromptOverview && overviewContent) { output += "==== SYSTEM_PROMPT_OVERVIEW ====\n" + String(overviewContent).trim() + "\n\n"; }
+       if (includeFileTree && selectedFolder) {
+           const treeSectionName = PROJECT_TREE_CONFIG.name;
+           const treeDescription = descriptionMap["project_tree"];
+           output += formatMarker(markers.section_open, { section_name: treeSectionName }) + "\n";
+           if (treeDescription) { output += markers.description_open + "\n" + String(treeDescription).trim() + "\n" + markers.description_close + "\n\n"; }
+           output += ".\n";
+           const asciiTree = generateAsciiFileTree(sortedContentFiles, selectedFolder);
+           output += asciiTree + "\n";
+           output += formatMarker(markers.section_close, { section_name: treeSectionName }) + "\n\n";
+       }
+
+       const filesBySection: Record<string, FileData[]> = {};
+       const defaultSectionId = PROMPT_SECTIONS.find((s) => s.directory === null)?.id || "project_files";
+       sortedContentFiles.forEach((file) => {
+           const sectionId = file.sectionId || categorizeFile(file, selectedFolder, PROMPT_SECTIONS);
+           if (!filesBySection[sectionId]) filesBySection[sectionId] = [];
+           filesBySection[sectionId].push(file);
+       });
+
+       for (const section of PROMPT_SECTIONS) {
+           const sectionFiles = filesBySection[section.id];
+           if (!sectionFiles || sectionFiles.length === 0) continue;
+           output += formatMarker(markers.section_open, { section_name: section.name }) + "\n\n";
+           const description = descriptionMap[section.id];
+           if (description) { output += markers.description_open + "\n" + String(description).trim() + "\n" + markers.description_close + "\n\n"; }
+           sectionFiles.forEach((file) => {
+               const relativePath = getRelativePath(file.path, selectedFolder);
+               output += formatMarker(markers.file_open, { file_path: relativePath }) + "\n";
+               output += file.content || "";
+               if (file.content && !file.content.endsWith("\n")) output += "\n";
+               output += formatMarker(markers.file_close, { file_path: relativePath }) + "\n\n";
+           });
+           output += formatMarker(markers.section_close, { section_name: section.name }) + "\n\n";
+       }
+       return output.trim();
+   }, [ // Dependencies are the state values used inside, now stable from shallow selector
+       selectedFolder,
+       formatMarker,
+       allFiles, // Still needed for descriptions/overview
+       selectedFiles,
+       sortOrder,
+       includeFileTree,
+       includePromptOverview,
+   ]);
+
+
+  // --- Event Handlers ---
+  const openFolder = useCallback(() => { /* ... */ }, [isElectron]);
+  const handleFolderSelectedIPC = useCallback((folderPath: string) => { /* ... uses setCurrentSelectedFolder, setStoreProcessingStatusAction ... */ }, [setCurrentSelectedFolder, setStoreProcessingStatusAction]);
+  const handleFileListDataIPC = useCallback((receivedData: FileData[] | { files: FileData[] }) => { /* ... uses setStoreAllFilesAction, setStoreProcessingStatusAction ... */ }, [setStoreAllFilesAction, setStoreProcessingStatusAction]);
+  const handleProcessingStatusIPC = useCallback((status: ProcessingStatus) => { /* ... uses setStoreProcessingStatusAction ... */ }, [setStoreProcessingStatusAction]);
+  const requestFileList = useCallback((folderPath: string, forceRefresh: boolean = false) => { /* ... uses setStoreProcessingStatusAction ... */ }, [isElectron, setStoreProcessingStatusAction]);
+  const refreshFolder = useCallback(() => { /* ... uses requestFileList ... */ }, [requestFileList]);
+  const reloadFolder = useCallback(() => { /* ... uses refreshFolder ... */ }, [refreshFolder]);
+  const handleSortChange = useCallback((newSort: string) => { /* ... uses setSortOrder ... */ }, [setSortOrder]);
+  const handleSearchChange = useCallback((newSearch: string) => { /* ... uses setSearchTerm ... */ }, [setSearchTerm]);
+  const handleViewChange = useCallback((newView: "structured" | "flat") => { /* ... uses setFileListView ... */ }, [setFileListView]);
+  const selectRecentFolder = useCallback((folderPath: string) => { /* ... uses setCurrentSelectedFolder ... */ }, [isElectron, setCurrentSelectedFolder]);
+  const removeRecentFolderHandler = useCallback((folderPath: string, event: MouseEvent) => { /* ... uses removeRecentFolder ... */ }, [removeRecentFolder]);
+  const handleExitFolder = useCallback(() => { /* ... uses exitFolder ... */ }, [exitFolder]);
+
+  // --- Effects ---
+  useEffect(() => { /* IPC Listeners */ }, [isElectron, handleFolderSelectedIPC, handleFileListDataIPC, handleProcessingStatusIPC]);
+  useEffect(() => { /* Initial File Load */ }, [selectedFolder, hasHydrated, isElectron, requestFileList, setStoreAllFilesAction]);
+  useEffect(() => { /* Sort Dropdown Click Outside */ }, [sortDropdownOpen]);
+
+  // Typed sort options array
+  const sortOptions: SortOptionConfig[] = [
+      { value: "path-asc", label: "Structure (A-Z)", icon: <FolderUp size={16} />, description: "Structure (A-Z)" },
+      { value: "path-desc", label: "Structure (Z-A)", icon: <FolderDown size={16} />, description: "Structure (Z-A)"},
+      { value: "tokens-asc", label: "Tokens (Low to High)", icon: <ChartNoAxesColumnIncreasingIcon size={16} />, description: "Tokens (Low to High)" },
+      { value: "tokens-desc", label: "Tokens (High to Low)", icon: <ChartNoAxesColumnDecreasingIcon size={16} />, description: "Tokens (High to Low)" },
+      { value: "name-asc", label: "Name (A to Z)", icon: <SortAsc size={16} />, description: "Name (A to Z)" },
+      { value: "name-desc", label: "Name (Z to A)", icon: <SortDesc size={16} />, description: "Name (Z to A)" },
+  ];
+
+  // --- Render Logic ---
+  if (!hasHydrated) { /* ... loading ... */ }
+
+  return (
+    <ThemeProvider>
+      <div className="app-container">
+        {/* Processing Status */}
+        {processingStatus.status === "processing" && ( <div className="processing-indicator"> <div className="spinner"></div> <span>{processingStatus.message}</span> </div> )}
+        {processingStatus.status === "error" && ( <div className="error-message">Error: {processingStatus.message}</div> )}
+
+        {/* Welcome Screen */}
+        {!selectedFolder && (
+            <div className="initial-prompt">
+                {/* ... welcome screen structure ... */}
+                {recentFolders.length > 0 && (
+                    <div className="recent-folders-section">
+                        {/* ... recent folders structure ... */}
+                        {recentFolders.map((folderPath: string) => (
+                            <div key={folderPath} className="recent-folder-item" onClick={() => selectRecentFolder(folderPath)} /* ... */>
+                                {/* ... folder details ... */}
+                                <button className="recent-folder-delete" onClick={(e) => removeRecentFolderHandler(folderPath, e)} /* ... */>
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        ))}
+                    </ul>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* Main Layout */}
+        {selectedFolder && (
+          <div className="main-content">
+            {/* REMINDER: Adjust SidebarProps temporarily */}
+            <Sidebar
+              selectedFolder={selectedFolder}
+              openFolder={openFolder}
+              refreshFolder={refreshFolder}
+              reloadFolder={reloadFolder}
+            />
+            <div className="content-area">
+              {/* Header */}
+              <div className="content-header">
+                {/* ... */}
+              </div>
+              {/* Content Header 2 */}
+              <div className="content-header">
+                 {/* ... */}
+                 <div className="file-stats"> {selectedFiles.length} files | ~{totalSelectedTokens.toLocaleString()} tokens </div>
+              </div>
+              {/* FileList */}
+               <FileList
+                files={displayedFiles}
+                selectedFiles={selectedFiles}
+                toggleFileSelection={toggleFileSelection} // Pass action directly
+                selectedFolder={selectedFolder}
+                view={fileListView}
+              />
+              {/* Footer / Copy Area */}
+               <div className="copy-button-container">
+                 <FileTreeToggle checked={includePromptOverview} onChange={() => setIncludePromptOverview(!includePromptOverview)} /* ... */> <span>Include Overview</span> </FileTreeToggle>
+                 <FileTreeToggle checked={includeFileTree} onChange={() => setIncludeFileTree(!includeFileTree)} /* ... */> <span>Include File Tree</span> </FileTreeToggle>
+                 {/* Corrected CopyButton usage */}
+                 <CopyButton text={getSelectedFilesContent()} className="primary full-width copy-files-btn" >
+                    {/* Children are passed correctly */}
+                    <span>COPY ({selectedFiles.length} files)</span>
+                 </CopyButton>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </ThemeProvider>
+  );
+};
+
+export default App;

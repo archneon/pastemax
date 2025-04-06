@@ -27,11 +27,22 @@ export interface TreeNode {
 }
 
 export interface SidebarProps {
-  selectedFolder: string | null; // Still needed for context/display
-  openFolder: () => void; // Handler from App
-  refreshFolder: () => void; // Handler from App
-  reloadFolder: () => void; // Handler from App
+  selectedFolder: string | null;
+  openFolder: () => void;
+  allFiles: FileData[];
+  selectedFiles: string[];
+  toggleFileSelection: (filePath: string) => void;
+  toggleFolderSelection: (folderPath: string, isSelected: boolean) => void;
+  searchTerm: string;
+  onSearchChange: (term: string) => void;
+  selectAllFiles: () => void;
+  deselectAllFiles: () => void;
+  refreshFolder: () => void;
+  reloadFolder: () => void;
+  expandedNodes: Set<string>;
+  toggleExpanded: (path: string) => void;
 }
+
 export interface FileListProps {
   files: FileData[];
   selectedFiles: string[];

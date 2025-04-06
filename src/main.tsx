@@ -28,20 +28,26 @@ try {
   } else {
     logger.info("Root element found. Calling ReactDOM.createRoot...");
 
-    // In development mode, remove Strict Mode to prevent double rendering
-    if (isDev) {
-      logger.info(
-        "Development mode: Disabling StrictMode to prevent double renders"
-      );
-      ReactDOM.createRoot(rootElement).render(<App />);
-    } else {
-      // In production, keep Strict Mode for additional safety checks
-      ReactDOM.createRoot(rootElement).render(
-        <React.StrictMode>
-          <App />
-        </React.StrictMode>
-      );
-    }
+    // // In development mode, remove Strict Mode to prevent double rendering
+    // if (isDev) {
+    //   logger.info(
+    //     "Development mode: Disabling StrictMode to prevent double renders"
+    //   );
+    //   ReactDOM.createRoot(rootElement).render(<App />);
+    // } else {
+    //   // In production, keep Strict Mode for additional safety checks
+    //   ReactDOM.createRoot(rootElement).render(
+    //     <React.StrictMode>
+    //       <App />
+    //     </React.StrictMode>
+    //   );
+    // }
+
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
 
     logger.info("ReactDOM.createRoot(...).render called successfully.");
   }

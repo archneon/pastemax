@@ -1,65 +1,62 @@
+// src/components/Sidebar.tsx
 import React, { useState, useEffect, useMemo } from "react";
 import logger from "../utils/logger";
-import { SidebarProps, TreeNode } from "../types/FileTypes";
-import { MouseEventType, UseStateType } from "../types/ReactTypes";
+import { SidebarProps, TreeNode, FileData } from "../types/FileTypes"; // Import FileData if needed here
+import { UseStateType, MouseEventType } from "../types/ReactTypes"; // Keep custom types for now if used
 import SearchBar from "./SearchBar";
 import TreeItem from "./TreeItem";
-// import {
-//   FolderTree,
-//   FileText,
-//   X,
-//   FolderOpen,
-//   RefreshCw,
-//   Search,
-//   ChevronRight,
-//   ChevronDown,
-//   CheckSquare,
-//   Square,
-//   Copy,
-//   List,
-//   Package,
-//   File,
-//   RotateCcw,
-// } from "lucide-react";
-// import { FileData } from "../types/FileTypes";
-// import {
-//   basename,
-//   getRelativePath,
-//   comparePaths,
-//   comparePathsStructurally,
-// } from "../utils/pathUtils";
+import {
+  useProjectStore,
+  selectCurrentProjectState,
+  selectAllFiles as selectStoreAllFilesHook, // Rename selector hook if needed
+} from "../store/projectStore"; // Import store and selectors
 
 const Sidebar = ({
-  selectedFolder,
-  openFolder,
-  allFiles,
-  selectedFiles,
-  toggleFileSelection,
-  toggleFolderSelection,
-  searchTerm,
-  onSearchChange,
-  selectAllFiles,
-  deselectAllFiles,
-  refreshFolder,
-  expandedNodes,
-  toggleExpanded,
-}: SidebarProps) => {
-  const [fileTree, setFileTree] = useState([]) as UseStateType<TreeNode[]>;
+  selectedFolder, // Keep from props for context
+  // openFolder, // Not used directly inside Sidebar logic, remove if only used in App
+  refreshFolder, // Keep handler from props
+}: // reloadFolder, // Keep handler from props if needed, otherwise remove
+SidebarProps) => {
+  // --- State from Zustand Store ---
+  const allFiles = useProjectStore(selectStoreAllFilesHook);
+  // Get state specific to the current project
+  const {
+    selectedFiles,
+    searchTerm,
+    expandedNodes: expandedNodesArray,
+  } = useProjectStore(selectCurrentProjectState);
+  // Get actions from store
+  const {
+    setSearchTerm,
+    selectAllFiles, // Renamed store action getter if needed
+    deselectAllFiles,
+    toggleFileSelection,
+    toggleFolderSelection,
+    toggleExpandedNode,
+  } = useProjectStore.getState();
+
+  // --- Internal Component State ---
+  const [fileTree, setFileTree] = useState<TreeNode[]>([]); // Correct useState typing
   const [isTreeBuildingComplete, setIsTreeBuildingComplete] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(300);
   const [isResizing, setIsResizing] = useState(false);
+
+  // Convert expandedNodesArray (string[]) from store to a Set for efficient lookups
+  const expandedNodesSet = useMemo(
+    () => new Set(expandedNodesArray),
+    [expandedNodesArray]
+  );
 
   // Min and max width constraints
   const MIN_SIDEBAR_WIDTH = 200;
   const MAX_SIDEBAR_WIDTH = 500;
 
-  // Handle mouse down for resizing
+  // --- Resize Logic (remains the same) ---
   const handleResizeStart = (e: MouseEventType<HTMLDivElement>) => {
     e.preventDefault();
     setIsResizing(true);
   };
 
-  // Handle resize effect
   useEffect(() => {
     const handleResize = (e: globalThis.MouseEvent) => {
       if (isResizing) {
@@ -69,22 +66,18 @@ const Sidebar = ({
         }
       }
     };
-
-    const handleResizeEnd = () => {
-      setIsResizing(false);
-    };
-
+    const handleResizeEnd = () => setIsResizing(false);
     document.addEventListener("mousemove", handleResize);
     document.addEventListener("mouseup", handleResizeEnd);
-
     return () => {
       document.removeEventListener("mousemove", handleResize);
       document.removeEventListener("mouseup", handleResizeEnd);
     };
   }, [isResizing]);
 
-  // Build file tree structure from flat list of files
+  // --- File Tree Building Logic ---
   useEffect(() => {
+    // Depends on allFiles from the store now
     if (allFiles.length === 0) {
       setFileTree([]);
       setIsTreeBuildingComplete(false);
@@ -96,13 +89,11 @@ const Sidebar = ({
       setIsTreeBuildingComplete(false);
 
       try {
-        // Create a structured representation using nested objects first
         const fileMap: Record<string, any> = {};
 
-        // First pass: create directories and files
         allFiles.forEach((file) => {
           if (!file.path) return;
-
+          // Use selectedFolder from props/store
           const relativePath =
             selectedFolder && file.path.startsWith(selectedFolder)
               ? file.path
@@ -114,33 +105,30 @@ const Sidebar = ({
           let currentPath = "";
           let current = fileMap;
 
-          // Build the path in the tree
           for (let i = 0; i < parts.length; i++) {
             const part = parts[i];
             if (!part) continue;
 
             currentPath = currentPath ? `${currentPath}/${part}` : part;
-
-            // Use the original file.path for files to avoid path duplication
             const fullPath =
               i === parts.length - 1
-                ? file.path // For files, use the original path
+                ? file.path
                 : selectedFolder
                 ? `${selectedFolder}/${currentPath}`
-                : currentPath; // For directories
+                : currentPath;
 
             if (i === parts.length - 1) {
-              // This is a file
+              // File node
               current[part] = {
                 id: `node-${fullPath}`,
                 name: part,
-                path: file.path, // Use the original file path
+                path: file.path, // Use original path
                 type: "file",
                 level: i,
-                fileData: file,
+                fileData: file, // Attach original FileData
               };
             } else {
-              // This is a directory
+              // Directory node
               if (!current[part]) {
                 current[part] = {
                   id: `node-${fullPath}`,
@@ -156,73 +144,44 @@ const Sidebar = ({
           }
         });
 
-        // Convert the nested object structure to the TreeNode array format
+        // Convert map to TreeNode array structure
         const convertToTreeNodes = (
           node: Record<string, any>,
           level = 0
         ): TreeNode[] => {
-          return Object.keys(node).map((key) => {
-            const item = node[key];
-
+          return Object.values(node).map((item: any): TreeNode => {
+            // Use any temporarily or define a map item type
             if (item.type === "file") {
               return item as TreeNode;
             } else {
               const children = convertToTreeNodes(item.children, level + 1);
-              // Check if the directory's path exists in the expandedNodes Set
-              const isExpanded = expandedNodes.has(item.path);
+              // Check expanded status using the Set derived from store state
+              const isExpanded = expandedNodesSet.has(item.path);
 
               return {
                 ...item,
                 children: children.sort((a, b) => {
-                  // Sort directories first
-                  if (a.type === "directory" && b.type === "file") return -1;
-                  if (a.type === "file" && b.type === "directory") return 1;
-
-                  // If both are directories or both are files, sort by name
-                  if (a.type === b.type) {
-                    // Check if either name starts with a dot (hidden file/directory)
-                    const aIsHidden = a.name.startsWith(".");
-                    const bIsHidden = b.name.startsWith(".");
-
-                    // Hidden files/directories come first
-                    if (aIsHidden && !bIsHidden) return -1;
-                    if (!aIsHidden && bIsHidden) return 1;
-
-                    // If both are hidden or both are not hidden, sort alphabetically
-                    return a.name.localeCompare(b.name);
-                  }
-
-                  return 0; // This should never happen as we've handled all cases above
+                  // Sort: dirs first, then hidden, then alphabetically
+                  if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+                  const aIsHidden = a.name.startsWith(".");
+                  const bIsHidden = b.name.startsWith(".");
+                  if (aIsHidden !== bIsHidden) return aIsHidden ? -1 : 1;
+                  return a.name.localeCompare(b.name);
                 }),
-                isExpanded,
+                isExpanded, // Set isExpanded based on the Set
               };
             }
           });
         };
 
-        // Convert to proper tree structure
         const treeRoots = convertToTreeNodes(fileMap);
-
-        // Sort the top level (directories first, then by name)
         const sortedTree = treeRoots.sort((a, b) => {
-          if (a.type === "directory" && b.type === "file") return -1;
-          if (a.type === "file" && b.type === "directory") return 1;
-
-          // If both are directories or both are files, sort by name
-          if (a.type === b.type) {
-            // Check if either name starts with a dot (hidden file/directory)
-            const aIsHidden = a.name.startsWith(".");
-            const bIsHidden = b.name.startsWith(".");
-
-            // Hidden files/directories come first
-            if (aIsHidden && !bIsHidden) return -1;
-            if (!aIsHidden && bIsHidden) return 1;
-
-            // If both are hidden or both are not hidden, sort alphabetically
-            return a.name.localeCompare(b.name);
-          }
-
-          return 0; // This should never happen as we've handled all cases above
+          // Sort root level
+          if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
+          const aIsHidden = a.name.startsWith(".");
+          const bIsHidden = b.name.startsWith(".");
+          if (aIsHidden !== bIsHidden) return aIsHidden ? -1 : 1;
+          return a.name.localeCompare(b.name);
         });
 
         setFileTree(sortedTree);
@@ -230,149 +189,154 @@ const Sidebar = ({
       } catch (err) {
         logger.error("Error building file tree:", err);
         setFileTree([]);
-        setIsTreeBuildingComplete(true);
+        setIsTreeBuildingComplete(true); // Mark as complete even on error
       }
     };
 
-    // Use a timeout to not block UI
-    const buildTreeTimeoutId = setTimeout(buildTree, 0);
+    const buildTreeTimeoutId = setTimeout(buildTree, 0); // Build async
     return () => clearTimeout(buildTreeTimeoutId);
-  }, [allFiles, selectedFolder, expandedNodes]);
+    // Depend on allFiles and selectedFolder (for relative paths)
+    // expandedNodesSet is derived, so expandedNodesArray is the real dependency
+  }, [allFiles, selectedFolder, expandedNodesArray]); // Re-run if files, folder, or expanded state changes
 
-  // Apply expanded state as a separate operation when expandedNodes change
+  // Effect to apply expanded state changes (can potentially be merged into the main build effect)
+  // Or kept separate if we want to avoid rebuilding the whole structure just for expansion toggle
   useEffect(() => {
-    if (fileTree.length === 0) return;
+    // This effect primarily ensures that toggling expansion reflects immediately
+    // without a full tree rebuild, by updating the isExpanded flag on existing nodes.
+    // It depends on expandedNodesSet (derived from store's expandedNodesArray).
+    if (fileTree.length === 0 || !isTreeBuildingComplete) return;
 
-    // Function to apply expanded state to nodes
     const applyExpandedState = (nodes: TreeNode[]): TreeNode[] => {
-      return nodes.map((node: TreeNode): TreeNode => {
+      return nodes.map((node): TreeNode => {
         if (node.type === "directory") {
-          // Check if the directory's path exists in the expandedNodes Set
-          const isExpanded = expandedNodes.has(node.path);
-
-          return {
-            ...node,
-            isExpanded,
-            children: node.children ? applyExpandedState(node.children) : [],
-          };
+          // Get expansion state from the derived Set
+          const isExpanded = expandedNodesSet.has(node.path);
+          // Recursively apply to children if they exist
+          const children = node.children
+            ? applyExpandedState(node.children)
+            : [];
+          // Return new node object only if isExpanded or children changed to maintain immutability
+          if (node.isExpanded !== isExpanded || node.children !== children) {
+            return { ...node, isExpanded, children };
+          }
         }
-        return node;
+        return node; // Return original node if no change
       });
     };
 
-    setFileTree((prevTree: TreeNode[]) => applyExpandedState(prevTree));
-  }, [expandedNodes]);
+    setFileTree((prevTree) => applyExpandedState(prevTree));
+    // Depend on the Set derived from the store's array.
+  }, [expandedNodesSet, isTreeBuildingComplete]); // Add isTreeBuildingComplete dependency
 
-  // Flatten the tree for rendering with proper indentation
+  // --- Tree Filtering and Flattening (remains similar, uses store's searchTerm) ---
   const flattenTree = (nodes: TreeNode[]): TreeNode[] => {
     let result: TreeNode[] = [];
-
     nodes.forEach((node) => {
-      // Add the current node
       result.push(node);
-
-      // If it's a directory and it's expanded, add its children
       if (node.type === "directory" && node.isExpanded && node.children) {
         result = [...result, ...flattenTree(node.children)];
       }
     });
-
     return result;
   };
 
-  // Filter the tree based on search term
   const filterTree = (nodes: TreeNode[], term: string): TreeNode[] => {
     if (!term) return nodes;
-
     const lowerTerm = term.toLowerCase();
 
-    // Function to check if a node or any of its children match the search
     const nodeMatches = (node: TreeNode): boolean => {
-      // Check if the node name matches
       if (node.name.toLowerCase().includes(lowerTerm)) return true;
-
-      // If it's a file, we're done
-      if (node.type === "file") return false;
-
-      // For directories, check if any children match
-      if (node.children) {
-        return node.children.some(nodeMatches);
+      if (node.type === "directory" && node.children) {
+        // Important: Also filter children recursively when checking match
+        const filteredChildren = node.children.filter(nodeMatches);
+        return filteredChildren.length > 0; // Match if any child matches
       }
-
       return false;
     };
 
-    // Filter the nodes
+    // Filter nodes and map to potentially update children and expansion
     return nodes.filter(nodeMatches).map((node) => {
-      // If it's a directory, also filter its children
       if (node.type === "directory" && node.children) {
         return {
           ...node,
-          children: filterTree(node.children, term),
-          isExpanded: true, // Auto-expand directories when searching
+          children: filterTree(node.children, term), // Recursively filter children
+          isExpanded: true, // Auto-expand directories matching search
         };
       }
       return node;
     });
   };
 
-  // The final tree to render, filtered and flattened
-  const visibleTree = flattenTree(filterTree(fileTree, searchTerm));
+  // Use searchTerm from store state for filtering
+  const visibleTree = useMemo(() => {
+    logger.debug("Recalculating visibleTree");
+    return flattenTree(filterTree(fileTree, searchTerm));
+  }, [fileTree, searchTerm]); // Recalculate when tree structure or search term changes
 
+  // --- Render ---
   return (
     <div className="sidebar" style={{ width: `${sidebarWidth}px` }}>
-      {/* <div className="sidebar-header">
-        <div className="sidebar-title">Files</div>
-        <div className="sidebar-folder-path">{selectedFolder}</div>
-      </div> */}
-
       <div className="sidebar-search">
+        {/* SearchBar now uses searchTerm from store and calls store action */}
         <SearchBar
           searchTerm={searchTerm}
-          onSearchChange={onSearchChange}
+          onSearchChange={setSearchTerm} // Call store action directly
           placeholder="Search files..."
         />
       </div>
 
       <div className="sidebar-actions">
+        {/* Buttons now call store actions */}
         <button className="sidebar-action-btn" onClick={selectAllFiles}>
           Select All
         </button>
         <button className="sidebar-action-btn" onClick={deselectAllFiles}>
           Deselect All
         </button>
+        {/* Refresh button calls prop function */}
         <button className="sidebar-action-btn" onClick={refreshFolder}>
           Refresh
         </button>
       </div>
 
-      {allFiles.length > 0 ? (
-        isTreeBuildingComplete ? (
-          <div className="file-tree">
-            {visibleTree.length > 0 ? (
-              visibleTree.map((node) => (
-                <TreeItem
-                  key={node.id}
-                  node={node}
-                  selectedFiles={selectedFiles}
-                  toggleFileSelection={toggleFileSelection}
-                  toggleFolderSelection={toggleFolderSelection}
-                  toggleExpanded={toggleExpanded}
-                />
-              ))
-            ) : (
-              <div className="tree-empty">No files match your search.</div>
-            )}
-          </div>
+      {/* Conditional rendering based on file loading/presence */}
+      {
+        allFiles.length > 0 ? (
+          isTreeBuildingComplete ? (
+            <div className="file-tree">
+              {visibleTree.length > 0 ? (
+                // Pass necessary state and actions down to TreeItem
+                // TreeItem will also need refactoring later
+                visibleTree.map((node) => (
+                  <TreeItem
+                    key={node.id}
+                    node={node}
+                    // Pass selectedFiles from store state
+                    selectedFiles={selectedFiles}
+                    // Pass actions from store
+                    toggleFileSelection={toggleFileSelection}
+                    toggleFolderSelection={toggleFolderSelection}
+                    toggleExpanded={toggleExpandedNode} // Pass renamed action
+                  />
+                ))
+              ) : (
+                <div className="tree-empty">No files match your search.</div>
+              )}
+            </div>
+          ) : (
+            <div className="tree-loading">
+              <div className="spinner"></div>
+              <span>Building file tree...</span>
+            </div>
+          )
+        ) : // Show appropriate message if allFiles is empty (could be initial state or empty folder)
+        selectedFolder ? ( // Check if a folder is actually selected
+          <div className="tree-empty">No files found in this folder.</div>
         ) : (
-          <div className="tree-loading">
-            <div className="spinner"></div>
-            <span>Building file tree...</span>
-          </div>
-        )
-      ) : (
-        <div className="tree-empty">No files found in this folder.</div>
-      )}
+          <div className="tree-empty">Select a folder to view files.</div>
+        ) // Should not happen if App logic is correct
+      }
 
       <div
         className="sidebar-resize-handle"

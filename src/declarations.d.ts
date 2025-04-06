@@ -1,7 +1,7 @@
 // Type declarations for external modules
-declare module "react";
-declare module "react-dom/client";
-declare module "react/jsx-runtime";
+// declare module "react";
+// declare module "react-dom/client";
+// declare module "react/jsx-runtime";
 declare module "electron";
 declare module "tiktoken";
 declare module "ignore";

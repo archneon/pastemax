@@ -11,10 +11,7 @@ import Sidebar from "./components/Sidebar";
 import FileList from "./components/FileList";
 import CopyButton from "./components/CopyButton";
 import FileTreeToggle from "./components/FileTreeToggle";
-// Ensure SidebarProps is NOT imported if TreeItemProps etc. were there
-// We might need to define props for components like FileList locally or in their own files
-// if they were previously in FileTypes.ts and cause conflicts now.
-import { FileData, SidebarProps } from "./types/FileTypes";
+import { FileData, SidebarProps } from "./types/FileTypes"; // Import SidebarProps
 import { ThemeProvider } from "./context/ThemeContext";
 import ThemeToggle from "./components/ThemeToggle";
 import FileListToggle from "./components/FileListToggle";
@@ -44,25 +41,33 @@ import {
   PROMPT_SECTIONS,
   PROMPT_MARKERS,
   PROJECT_TREE_CONFIG,
+  DESCRIPTIONS_DIR,
+  OVERVIEW_FILENAME,
+  DEFAULT_SORT_ORDER,
+  DEFAULT_INCLUDE_FILE_TREE_GLOBAL,
+  DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL,
+  // SORT_ORDERS, // Not needed directly if using the typed array below
 } from "./constants";
 import { PromptSectionDefinition } from "./types/promptConfigTypes";
 import {
   useProjectStore,
   selectCurrentSelectedFolder,
   selectRecentFolders,
-  selectAllFiles as selectStoreAllFilesHook,
+  selectAllFiles as selectStoreAllFilesHook, // Renamed to avoid conflict in this scope if needed elsewhere
   selectProcessingStatus,
+  selectCurrentProjectState,
   selectHasHydrated,
-  getDefaultPerProjectState, // Imported function
-} from "./store/projectStore";
-// Import PerProjectState if needed for typing, ProcessingStatus might be used
-import { ProcessingStatus, PerProjectState } from "./types/projectStateTypes";
+} from "./store/projectStore"; // Import store and selectors
+import { ProcessingStatus } from "./types/projectStateTypes";
 
+// Add render counter for debugging
 let renderCount = 0;
+// Track session ID to distinguish between multiple module loads (hot reloading)
 const APP_INSTANCE_ID = Math.random().toString(36).substring(2, 8);
 
-// Log outside component to ensure it logs only once per module load
-logger.info(`App.tsx module loaded (instance: ${APP_INSTANCE_ID})`);
+logger.info(
+  `App.tsx component function starting (instance: ${APP_INSTANCE_ID})`
+);
 
 // Access the electron API from the window object
 declare global {
@@ -83,8 +88,8 @@ declare global {
 // Interface for sort options array elements
 interface SortOptionConfig {
   value: string;
-  label: string;
-  icon: JSX.Element;
+  label: string; // Keep label for potential future use or tooltips
+  icon: JSX.Element; // Type for React elements
   description: string;
 }
 
@@ -94,160 +99,145 @@ const categorizeFile = (
   currentSelectedFolder: string | null,
   sections: PromptSectionDefinition[]
 ): string => {
-  // logger.debug(`Categorizing file: ${file.path} for folder: ${currentSelectedFolder}`);
   const defaultSection = sections.find((s) => s.directory === null);
   const defaultSectionId = defaultSection?.id || "project_files";
+
   if (
-    !currentSelectedFolder ||
     file.descriptionForSectionId ||
     file.isOverviewTemplate ||
-    file.isProjectTreeDescription
+    file.isProjectTreeDescription ||
+    !currentSelectedFolder
   ) {
-    // logger.debug(`File ${file.path} categorized as default (special file or no folder): ${defaultSectionId}`);
-    return defaultSectionId;
+    return defaultSectionId; // Assign default, won't be treated as content file anyway
   }
+
   const relativePath = getRelativePath(file.path, currentSelectedFolder);
   if (!relativePath) {
-    // logger.debug(`File ${file.path} categorized as default (no relative path): ${defaultSectionId}`);
     return defaultSectionId;
   }
+
   for (const section of sections) {
-    if (
-      section.directory &&
-      (relativePath === section.directory ||
-        relativePath.startsWith(section.directory + "/"))
-    ) {
-      // logger.debug(`File ${file.path} categorized under section: ${section.id}`);
-      return section.id;
+    if (section.directory) {
+      // Check if the relative path starts with the section directory
+      // Ensure comparison handles potential trailing slashes consistently if needed
+      if (
+        relativePath === section.directory ||
+        relativePath.startsWith(section.directory + "/")
+      ) {
+        return section.id;
+      }
     }
   }
-  // logger.debug(`File ${file.path} categorized as default (no matching section): ${defaultSectionId}`);
   return defaultSectionId;
 };
-
-// --- Define default project state values once outside the component ---
-const defaultProjectStateValues = getDefaultPerProjectState();
-const defaultSelectedFiles: string[] = []; // Stable empty array reference
 
 // --- App Component ---
 const App = () => {
   renderCount++;
-  // *** LOG: App component render start ***
-  logger.debug(
-    `--- App render START #${renderCount} (instance: ${APP_INSTANCE_ID}) ---`
-  );
+  logger.debug(`App render #${renderCount} (instance: ${APP_INSTANCE_ID})`);
 
-  // --- State from Zustand Store (Individual Selectors) ---
+  // --- State from Zustand Store ---
   const hasHydrated = useProjectStore(selectHasHydrated);
   const selectedFolder = useProjectStore(selectCurrentSelectedFolder);
   const recentFolders = useProjectStore(selectRecentFolders);
-  const allFiles = useProjectStore(selectStoreAllFilesHook);
+  const allFiles = useProjectStore(selectStoreAllFilesHook); // Use the selector
   const processingStatus = useProjectStore(selectProcessingStatus);
-
-  // Get specific project state properties individually, providing stable defaults
-  const selectedFiles = useProjectStore(
-    (state) =>
-      state.projects[state.currentSelectedFolder!]?.selectedFiles ??
-      defaultSelectedFiles
-  );
-  const sortOrder = useProjectStore(
-    (state) =>
-      state.projects[state.currentSelectedFolder!]?.sortOrder ??
-      defaultProjectStateValues.sortOrder
-  );
-  const searchTerm = useProjectStore(
-    (state) =>
-      state.projects[state.currentSelectedFolder!]?.searchTerm ??
-      defaultProjectStateValues.searchTerm
-  );
-  const fileListView = useProjectStore(
-    (state) =>
-      state.projects[state.currentSelectedFolder!]?.fileListView ??
-      defaultProjectStateValues.fileListView
-  );
-  const includeFileTree = useProjectStore(
-    (state) =>
-      state.projects[state.currentSelectedFolder!]?.includeFileTree ??
-      defaultProjectStateValues.includeFileTree
-  );
-  const includePromptOverview = useProjectStore(
-    (state) =>
-      state.projects[state.currentSelectedFolder!]?.includePromptOverview ??
-      defaultProjectStateValues.includePromptOverview
-  );
-
-  // *** LOG: State values after selection ***
-  logger.debug(
-    `Render #${renderCount}: Hydrated: ${hasHydrated}, Folder: ${selectedFolder}, FilesCount: ${allFiles.length}, SelectedCount: ${selectedFiles.length}, Sort: ${sortOrder}, Search: ${searchTerm}, Status: ${processingStatus.status}`
-  );
+  // Get state specific to the current project using a selector
+  const currentProjectState = useProjectStore(selectCurrentProjectState);
+  // Destructure needed properties from currentProjectState
+  const {
+    selectedFiles,
+    // expandedNodes, // Not directly used in App render logic anymore
+    sortOrder,
+    searchTerm,
+    fileListView,
+    includeFileTree,
+    includePromptOverview,
+  } = currentProjectState;
 
   // --- Actions from Zustand Store ---
+  // Get actions once using getState, prevents re-renders triggered by action references changing
   const {
     setCurrentSelectedFolder,
-    setAllFiles: setStoreAllFilesAction,
-    setProcessingStatus: setStoreProcessingStatusAction,
+    setAllFiles: setStoreAllFilesAction, // Rename action getter
+    setProcessingStatus: setStoreProcessingStatusAction, // Rename action getter
     toggleFileSelection,
+    // toggleFolderSelection, // Called from Sidebar
+    // selectAllFiles, // Called from Sidebar
+    // deselectAllFiles, // Called from Sidebar
     setSortOrder,
     setSearchTerm,
     setFileListView,
+    // toggleExpandedNode, // Called from Sidebar
     setIncludeFileTree,
     setIncludePromptOverview,
     removeRecentFolder,
     exitFolder,
+    // addRecentFolder, // Called internally by setCurrentSelectedFolder
   } = useProjectStore.getState();
 
   // --- Local UI State ---
+  // Type with normal destructuring
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
-  const sortDropdownRef: React.RefObject<HTMLDivElement> =
-    useRef<HTMLDivElement>(null);
+  const sortDropdownRef = useRef<HTMLDivElement>(null); // Typed ref
 
-  // --- Ref to track initial load request for the current folder ---
-  const initialLoadRequestedRef = useRef<string | null>(null);
-
+  // Check if we're running in Electron or browser environment
   const isElectron = window.electron !== undefined;
 
   // --- Derived State & Calculations ---
+
+  // Memoize displayed files based on filtering and sorting from the store state
   const displayedFiles = useMemo(() => {
-    // *** LOG: useMemo for displayedFiles ***
-    logger.debug(`Render #${renderCount}: Recalculating displayedFiles.`);
+    logger.debug(
+      `Recalculating displayedFiles. allFiles: ${allFiles.length}, sort: ${sortOrder}, filter: ${searchTerm}`
+    );
     let filtered = allFiles;
+    // Apply filter if searchTerm is present
     if (searchTerm) {
       const lowerFilter = searchTerm.toLowerCase();
       filtered = allFiles.filter(
         (file) =>
           file.name.toLowerCase().includes(lowerFilter) ||
+          // Also check relative path for better filtering consistency
           getRelativePath(file.path, selectedFolder)
             .toLowerCase()
             .includes(lowerFilter)
       );
     }
+
+    // Apply sort
     const [sortKey, sortDir] = sortOrder.split("-");
     const sorted = [...filtered].sort((a, b) => {
       let comparison = 0;
       if (sortKey === "name") comparison = a.name.localeCompare(b.name);
       else if (sortKey === "tokens")
         comparison = (a.tokenCount || 0) - (b.tokenCount || 0);
+      // Handle potential undefined tokenCount
       else if (sortKey === "size") comparison = (a.size || 0) - (b.size || 0);
+      // Handle potential undefined size
       else if (sortKey === "path")
-        comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
+        comparison = comparePathsStructurally(a.path, b.path, selectedFolder); // selectedFolder can be null, handle appropriately if needed inside compare
       return sortDir === "asc" ? comparison : -comparison;
     });
     return sorted;
-  }, [allFiles, sortOrder, searchTerm, selectedFolder]);
+  }, [allFiles, sortOrder, searchTerm, selectedFolder]); // Ensure selectedFolder is a dependency
 
+  // Memoize total token calculation
   const totalSelectedTokens = useMemo(() => {
-    // *** LOG: useMemo for totalSelectedTokens ***
-    logger.debug(`Render #${renderCount}: Recalculating totalSelectedTokens.`);
+    logger.debug(
+      `Recalculating totalSelectedTokens. selectedFiles: ${selectedFiles.length}`
+    );
     const selectedFilesSet = new Set(selectedFiles.map(normalizePath));
     return allFiles.reduce((total, file) => {
+      // Check if the normalized path exists in the set and add token count
       if (selectedFilesSet.has(normalizePath(file.path))) {
-        return total + (file.tokenCount || 0);
+        return total + (file.tokenCount || 0); // Ensure tokenCount is treated as 0 if undefined/null
       }
       return total;
     }, 0);
-  }, [selectedFiles, allFiles]);
+  }, [selectedFiles, allFiles]); // Dependencies are selectedFiles array and allFiles array
 
-  // --- Format marker helper ---
+  // Format marker helper function
   const formatMarker = useCallback(
     (
       template: string,
@@ -260,20 +250,32 @@ const App = () => {
         result = result.replace("{file_path}", context.file_path);
       return result;
     },
-    []
+    [] // No dependencies, this function is pure
   );
 
-  // --- Generate Content for Copying ---
+  // --- Generate Content for Copying (Derived) ---
   const getSelectedFilesContent = useCallback(() => {
-    // *** LOG: useCallback for getSelectedFilesContent (recreation log removed unless needed) ***
     logger.debug(
-      `Generating content for copying. Selected files: ${selectedFiles.length}`
-    ); // Log inside call
-    const selectedPathSet = new Set(selectedFiles.map(normalizePath));
+      `Generating content for copying. selectedFiles: ${selectedFiles.length}`
+    );
+    const currentAllFiles = useProjectStore.getState().allFiles; // Get latest allFiles
+    const currentSelectedFiles =
+      useProjectStore.getState().projects[selectedFolder!]?.selectedFiles || []; // Get latest selection for current folder
+    const currentSortOrder =
+      useProjectStore.getState().projects[selectedFolder!]?.sortOrder ||
+      DEFAULT_SORT_ORDER;
+    const currentIncludeFileTree =
+      useProjectStore.getState().projects[selectedFolder!]?.includeFileTree ??
+      DEFAULT_INCLUDE_FILE_TREE_GLOBAL;
+    const currentIncludePromptOverview =
+      useProjectStore.getState().projects[selectedFolder!]
+        ?.includePromptOverview ?? DEFAULT_INCLUDE_PROMPT_OVERVIEW_GLOBAL;
 
-    const contentFiles = allFiles.filter(
+    const selectedPathSet = new Set(currentSelectedFiles.map(normalizePath));
+
+    const contentFiles = currentAllFiles.filter(
       (file: FileData) =>
-        selectedPathSet.has(normalizePath(file.path)) &&
+        selectedPathSet.has(normalizePath(file.path)) && // Use set for efficiency
         !file.isBinary &&
         !file.isSkipped &&
         !file.descriptionForSectionId &&
@@ -283,25 +285,28 @@ const App = () => {
 
     const descriptionMap: Record<string, string> = {};
     let overviewContent: string | null = null;
-    allFiles.forEach((file: FileData) => {
+    currentAllFiles.forEach((file: FileData) => {
       if (file.content) {
-        if (file.descriptionForSectionId)
+        if (file.descriptionForSectionId) {
           descriptionMap[file.descriptionForSectionId] = file.content;
-        else if (file.isProjectTreeDescription)
+        } else if (file.isProjectTreeDescription) {
           descriptionMap["project_tree"] = file.content;
-        else if (file.isOverviewTemplate) overviewContent = file.content;
+        } else if (file.isOverviewTemplate) {
+          overviewContent = file.content;
+        }
       }
     });
 
     if (
       contentFiles.length === 0 &&
-      !includeFileTree &&
-      !includePromptOverview
+      !currentIncludeFileTree &&
+      !currentIncludePromptOverview
     ) {
       return "No text files selected, or tree/overview not included.";
     }
 
-    const [sortKey, sortDir] = sortOrder.split("-");
+    // Sort the content files based on the current sort order
+    const [sortKey, sortDir] = currentSortOrder.split("-");
     const sortedContentFiles = [...contentFiles].sort((a, b) => {
       let comparison = 0;
       if (sortKey === "name") comparison = a.name.localeCompare(b.name);
@@ -309,36 +314,34 @@ const App = () => {
         comparison = (a.tokenCount || 0) - (b.tokenCount || 0);
       else if (sortKey === "size") comparison = (a.size || 0) - (b.size || 0);
       else if (sortKey === "path")
-        comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
+        comparison = comparePathsStructurally(a.path, b.path, selectedFolder); // Pass selectedFolder
       return sortDir === "asc" ? comparison : -comparison;
     });
 
     let output = "";
     const markers = PROMPT_MARKERS;
 
-    if (includePromptOverview && overviewContent) {
-      output +=
-        "==== SYSTEM_PROMPT_OVERVIEW ====\n" +
-        String(overviewContent).trim() +
-        "\n\n";
+    // Overview
+    if (currentIncludePromptOverview && overviewContent) {
+      output += "==== SYSTEM_PROMPT_OVERVIEW ====\n";
+      output += String(overviewContent).trim() + "\n\n";
     }
-    if (includeFileTree && selectedFolder) {
+
+    // Project Tree
+    if (currentIncludeFileTree && selectedFolder) {
       const treeSectionName = PROJECT_TREE_CONFIG.name;
       const treeDescription = descriptionMap["project_tree"];
       output +=
         formatMarker(markers.section_open, { section_name: treeSectionName }) +
         "\n";
       if (treeDescription) {
-        output +=
-          markers.description_open +
-          "\n" +
-          String(treeDescription).trim() +
-          "\n" +
-          markers.description_close +
-          "\n\n";
+        output += markers.description_open + "\n";
+        output += String(treeDescription).trim() + "\n";
+        output += markers.description_close + "\n\n";
       }
-      output += ".\n";
+      output += ".\n"; // Root indicator
       const asciiTree = generateAsciiFileTree(
+        // Generate tree based on the *selected* and *sorted* content files
         sortedContentFiles,
         selectedFolder
       );
@@ -348,209 +351,206 @@ const App = () => {
         "\n\n";
     }
 
+    // Group files by section
     const filesBySection: Record<string, FileData[]> = {};
     const defaultSectionId =
       PROMPT_SECTIONS.find((s) => s.directory === null)?.id || "project_files";
     sortedContentFiles.forEach((file) => {
       const sectionId =
-        file.sectionId || categorizeFile(file, selectedFolder, PROMPT_SECTIONS);
+        file.sectionId || categorizeFile(file, selectedFolder, PROMPT_SECTIONS); // Ensure sectionId exists or categorize again
       if (!filesBySection[sectionId]) filesBySection[sectionId] = [];
       filesBySection[sectionId].push(file);
     });
 
+    // Iterate through sections in defined order
     for (const section of PROMPT_SECTIONS) {
       const sectionFiles = filesBySection[section.id];
       if (!sectionFiles || sectionFiles.length === 0) continue;
+
+      // Section Start
       output +=
         formatMarker(markers.section_open, { section_name: section.name }) +
         "\n\n";
+
+      // Section Description
       const description = descriptionMap[section.id];
       if (description) {
-        output +=
-          markers.description_open +
-          "\n" +
-          String(description).trim() +
-          "\n" +
-          markers.description_close +
-          "\n\n";
+        output += markers.description_open + "\n";
+        output += String(description).trim() + "\n";
+        output += markers.description_close + "\n\n";
       }
+
+      // Files within Section
       sectionFiles.forEach((file) => {
         const relativePath = getRelativePath(file.path, selectedFolder);
         output +=
           formatMarker(markers.file_open, { file_path: relativePath }) + "\n";
-        output += file.content || "";
-        if (file.content && !file.content.endsWith("\n")) output += "\n";
+        output += file.content || ""; // Use empty string if content is missing
+        if (file.content && !file.content.endsWith("\n")) output += "\n"; // Ensure newline
         output +=
           formatMarker(markers.file_close, { file_path: relativePath }) +
           "\n\n";
       });
+
+      // Section End
       output +=
         formatMarker(markers.section_close, { section_name: section.name }) +
         "\n\n";
     }
-    return output.trim();
-  }, [
-    // Dependencies reflect the state used from the store selectors
-    selectedFolder,
-    formatMarker,
-    allFiles,
-    selectedFiles,
-    sortOrder,
-    includeFileTree,
-    includePromptOverview,
-  ]);
+
+    return output.trim(); // Trim final output
+  }, [selectedFolder, formatMarker]); // Depend on selectedFolder and formatMarker, state is fetched inside
 
   // --- Event Handlers ---
+
   const openFolder = useCallback(() => {
     if (isElectron) {
-      logger.info("Handler: openFolder");
+      logger.info("Opening folder dialog");
       window.electron.ipcRenderer.send("open-folder");
     } else {
       logger.warn("Folder selection not available in browser");
     }
   }, [isElectron]);
+
   const handleFolderSelectedIPC = useCallback(
     (folderPath: string) => {
-      // Reset the ref when a new folder is selected via IPC
-      initialLoadRequestedRef.current = null;
       if (typeof folderPath === "string") {
         logger.info(`IPC: folder-selected received: ${folderPath}`);
-        setCurrentSelectedFolder(folderPath);
+        setCurrentSelectedFolder(folderPath); // Use action from store
       } else {
         logger.error(`IPC: Invalid folder path received: ${folderPath}`);
         setStoreProcessingStatusAction({
           status: "error",
           message: "Invalid folder path received",
-        });
+        }); // Use action
       }
     },
-    [setCurrentSelectedFolder, setStoreProcessingStatusAction]
+    [setCurrentSelectedFolder, setStoreProcessingStatusAction] // Actions as dependencies
   );
+
   const handleFileListDataIPC = useCallback(
     (receivedData: FileData[] | { files: FileData[] }) => {
       logger.info(`IPC: file-list-data received`);
       const filesArray = Array.isArray(receivedData)
         ? receivedData
         : receivedData.files;
+
+      // Must get current selected folder *at the time of execution*
       const currentSelectedFolder =
-        useProjectStore.getState().currentSelectedFolder; // Get folder state when handler runs
+        useProjectStore.getState().currentSelectedFolder;
+
       const categorizedFiles = filesArray.map((file) => ({
         ...file,
+        // Ensure sectionId is calculated based on the folder that was *requested*, which should match currentSelectedFolder here
         sectionId: categorizeFile(file, currentSelectedFolder, PROMPT_SECTIONS),
       }));
-      logger.info(
-        `IPC: Setting ${categorizedFiles.length} categorized files in store.`
-      );
-      setStoreAllFilesAction(categorizedFiles);
+
+      setStoreAllFilesAction(categorizedFiles); // Use action
       setStoreProcessingStatusAction({
         status: "complete",
         message: `Loaded ${categorizedFiles.length} files`,
-      });
+      }); // Use action
     },
-    [setStoreAllFilesAction, setStoreProcessingStatusAction]
+    [setStoreAllFilesAction, setStoreProcessingStatusAction] // Actions as dependencies
   );
+
   const handleProcessingStatusIPC = useCallback(
     (status: ProcessingStatus) => {
-      logger.info(
-        `IPC: file-processing-status received: ${status.status} - ${status.message}`
-      );
-      setStoreProcessingStatusAction(status);
+      logger.info(`IPC: file-processing-status received: ${status.status}`);
+      setStoreProcessingStatusAction(status); // Use action
     },
-    [setStoreProcessingStatusAction]
+    [setStoreProcessingStatusAction] // Action as dependency
   );
+
   const requestFileList = useCallback(
     (folderPath: string, forceRefresh: boolean = false) => {
       if (!isElectron || !folderPath) return;
-      logger.info(
-        `Handler: requestFileList for ${folderPath}, forceRefresh: ${forceRefresh}`
-      ); // Changed to info
+      logger.debug(
+        `Requesting file list for ${folderPath}, forceRefresh: ${forceRefresh}`
+      );
       setStoreProcessingStatusAction({
+        // Use action
         status: "processing",
         message: forceRefresh
           ? "Reloading folder..."
-          : "Requesting folder data...",
-      }); // Adjusted message
+          : "Refreshing folder data...",
+      });
       window.electron.ipcRenderer.send("request-file-list", {
         path: folderPath,
         forceRefresh: forceRefresh,
       });
     },
     [isElectron, setStoreProcessingStatusAction]
-  );
+  ); // Action as dependency
+
   const refreshFolder = useCallback(() => {
+    // Get current selected folder directly from store state when called
     const currentSelectedFolder =
       useProjectStore.getState().currentSelectedFolder;
     if (currentSelectedFolder) {
-      logger.info(`Handler: refreshFolder called for ${currentSelectedFolder}`);
-      // Mark that a new request is needed even if it's the same folder
-      initialLoadRequestedRef.current = null;
       requestFileList(currentSelectedFolder, true);
     }
-  }, [requestFileList]);
+  }, [requestFileList]); // requestFileList is stable due to its own dependencies
+
   const reloadFolder = useCallback(() => {
-    logger.info(`Handler: reloadFolder called`);
+    // For now, same as refresh
     refreshFolder();
   }, [refreshFolder]);
+
   const handleSortChange = useCallback(
     (newSort: string) => {
-      logger.info(`Handler: handleSortChange called with ${newSort}`);
-      setSortOrder(newSort);
+      setSortOrder(newSort); // Use action
       setSortDropdownOpen(false);
     },
     [setSortOrder]
-  );
+  ); // Action as dependency
+
   const handleSearchChange = useCallback(
     (newSearch: string) => {
-      logger.info(`Handler: handleSearchChange called with "${newSearch}"`);
-      setSearchTerm(newSearch);
+      setSearchTerm(newSearch); // Use action
     },
     [setSearchTerm]
-  );
+  ); // Action as dependency
+
   const handleViewChange = useCallback(
     (newView: "structured" | "flat") => {
-      logger.info(`Handler: handleViewChange called with ${newView}`);
-      setFileListView(newView);
+      setFileListView(newView); // Use action
     },
     [setFileListView]
-  );
+  ); // Action as dependency
+
   const selectRecentFolder = useCallback(
     (folderPath: string) => {
       if (!isElectron) return;
-      // Reset the ref when selecting a recent folder
-      initialLoadRequestedRef.current = null;
-      logger.info(`Handler: selectRecentFolder called with ${folderPath}`);
-      setCurrentSelectedFolder(folderPath);
+      setCurrentSelectedFolder(folderPath); // Use action
     },
     [isElectron, setCurrentSelectedFolder]
-  );
+  ); // Action as dependency
+
   const removeRecentFolderHandler = useCallback(
     (folderPath: string, event: MouseEvent) => {
       event.stopPropagation();
-      logger.info(
-        `Handler: removeRecentFolderHandler called with ${folderPath}`
-      );
-      removeRecentFolder(folderPath);
+      removeRecentFolder(folderPath); // Use action
     },
     [removeRecentFolder]
-  );
+  ); // Action as dependency
+
   const handleExitFolder = useCallback(() => {
-    logger.info(`Handler: handleExitFolder called`);
-    // Reset the ref when exiting a folder
-    initialLoadRequestedRef.current = null;
-    exitFolder();
-  }, [exitFolder]);
+    exitFolder(); // Use action
+  }, [exitFolder]); // Action as dependency
 
   // --- Effects ---
+
   useEffect(() => {
-    // *** LOG: useEffect for IPC Listeners ***
-    logger.debug(
-      `Render #${renderCount}: Running useEffect for IPC listeners.`
-    );
     if (!isElectron) return;
-    logger.debug(`Setting up IPC listeners (instance: ${APP_INSTANCE_ID})`);
+    logger.debug(
+      `Setting up IPC listeners (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
+    );
+
     const folderSelectedHandler = handleFolderSelectedIPC;
     const fileListDataHandler = handleFileListDataIPC;
     const processingStatusHandler = handleProcessingStatusIPC;
+
     window.electron.ipcRenderer.on("folder-selected", folderSelectedHandler);
     window.electron.ipcRenderer.on("file-list-data", fileListDataHandler);
     window.electron.ipcRenderer.on(
@@ -558,8 +558,11 @@ const App = () => {
       processingStatusHandler
     );
     logger.debug("IPC listeners registered.");
+
     return () => {
-      logger.debug(`Cleaning up IPC listeners (instance: ${APP_INSTANCE_ID})`);
+      logger.debug(
+        `Cleaning up IPC listeners (render #${renderCount}, instance: ${APP_INSTANCE_ID})`
+      );
       window.electron.ipcRenderer.removeListener(
         "folder-selected",
         folderSelectedHandler
@@ -579,66 +582,34 @@ const App = () => {
     handleFolderSelectedIPC,
     handleFileListDataIPC,
     handleProcessingStatusIPC,
-  ]); // Dependencies are the stable callbacks
+  ]);
 
-  // *** MODIFIED useEffect for Initial File Load ***
   useEffect(() => {
-    logger.debug(
-      `Render #${renderCount}: Running useEffect for initial file load. Hydrated: ${hasHydrated}, Electron: ${isElectron}, Folder: ${selectedFolder}, Status: ${processingStatus.status}, InitialLoadRequested: ${initialLoadRequestedRef.current}`
-    );
     if (hasHydrated && isElectron && selectedFolder) {
-      // Check if we haven't requested the initial load for THIS specific folder yet
-      // AND if we are not currently processing something else
-      if (
-        initialLoadRequestedRef.current !== selectedFolder &&
-        processingStatus.status !== "processing"
-      ) {
-        logger.info(
-          `Effect: Triggering INITIAL requestFileList for ${selectedFolder}.`
-        );
-        requestFileList(selectedFolder, false);
-        // Mark this folder as having had its initial load requested
-        initialLoadRequestedRef.current = selectedFolder;
-      } else if (initialLoadRequestedRef.current === selectedFolder) {
-        logger.debug(
-          `Effect: Initial load for ${selectedFolder} already requested or in progress.`
-        );
-      } else if (processingStatus.status === "processing") {
-        logger.debug(
-          `Effect: Skipping requestFileList for ${selectedFolder} because status is already processing.`
-        );
-      }
+      logger.info(
+        `Effect: selectedFolder changed to ${selectedFolder} or hydrated. Requesting file list.`
+      );
+      // We request every time the selected folder changes after hydration
+      requestFileList(selectedFolder, false);
     } else if (hasHydrated && !selectedFolder) {
-      // Clear files if no folder is selected and reset the ref
+      // Clear files if no folder is selected after hydration
       const currentAllFiles = useProjectStore.getState().allFiles;
-      if (
-        currentAllFiles.length > 0 ||
-        initialLoadRequestedRef.current !== null
-      ) {
+      if (currentAllFiles.length > 0) {
         logger.debug(
-          "Effect: No folder selected after hydration, clearing allFiles and load request tracker."
+          "Effect: No folder selected after hydration, clearing allFiles."
         );
-        setStoreAllFilesAction([]);
-        initialLoadRequestedRef.current = null; // Reset tracker when folder becomes null
+        setStoreAllFilesAction([]); // Use action
       }
     }
-    // Log if waiting for hydration
-    if (!hasHydrated) {
-      logger.debug(`Render #${renderCount}: Waiting for store hydration...`);
-    }
-    // Dependencies: Only re-run when folder changes, hydration completes, or processing finishes.
   }, [
     selectedFolder,
     hasHydrated,
     isElectron,
-    processingStatus.status,
     requestFileList,
     setStoreAllFilesAction,
-  ]); // Added requestFileList and setStoreAllFilesAction back as they are used inside
+  ]); // Add action to dependencies
 
   useEffect(() => {
-    // *** LOG: useEffect for Sort Dropdown Click Outside ***
-    // logger.debug(`Render #${renderCount}: Running useEffect for sort dropdown.`);
     const handleClickOutside = (event: globalThis.MouseEvent) => {
       if (
         sortDropdownRef.current &&
@@ -655,7 +626,7 @@ const App = () => {
     };
   }, [sortDropdownOpen]);
 
-  // Typed sort options array
+  // Explicitly typed sort options array
   const sortOptions: SortOptionConfig[] = [
     {
       value: "path-asc",
@@ -696,20 +667,11 @@ const App = () => {
   ];
 
   // --- Render Logic ---
-  // *** LOG: App render RETURN ***
-  logger.debug(
-    `Render #${renderCount}: App rendering RETURN statement. Folder: ${selectedFolder}, Status: ${processingStatus.status}`
-  );
-
   if (!hasHydrated) {
-    logger.debug(
-      `Render #${renderCount}: Rendering loading indicator (not hydrated).`
-    );
     return (
       <div className="processing-indicator">
-        {" "}
-        <div className="spinner"></div>{" "}
-        <span>Loading application state...</span>{" "}
+        <div className="spinner"></div>
+        <span>Loading application state...</span>
       </div>
     );
   }
@@ -720,9 +682,8 @@ const App = () => {
         {/* Processing Status */}
         {processingStatus.status === "processing" && (
           <div className="processing-indicator">
-            {" "}
-            <div className="spinner"></div>{" "}
-            <span>{processingStatus.message}</span>{" "}
+            <div className="spinner"></div>
+            <span>{processingStatus.message}</span>
           </div>
         )}
         {processingStatus.status === "error" && (
@@ -732,17 +693,14 @@ const App = () => {
         {/* Welcome Screen */}
         {!selectedFolder && (
           <div className="initial-prompt">
-            {/* Log Welcome Screen render using comma operator */}
-            {renderCount < 3 &&
-              (logger.debug("Rendering Welcome Screen (Log 1)"), null)}
             <div className="initial-prompt-content">
               <div className="initial-header">
                 <h2>PasteMax</h2>
                 <div className="initial-actions">
                   <ThemeToggle />
                   <button className="select-folder-btn" onClick={openFolder}>
-                    {" "}
-                    <FolderOpen size={16} /> <span>Select Folder</span>{" "}
+                    <FolderOpen size={16} />
+                    <span>Select Folder</span>
                   </button>
                 </div>
               </div>
@@ -750,15 +708,16 @@ const App = () => {
                 <div className="recent-folders-section">
                   <div className="recent-folders-title">Recent folders</div>
                   <ul className="recent-folders-list">
-                    {recentFolders.map((folderPath: string) => (
+                    {recentFolders.map((folderPath: string, index: number) => (
                       <div
-                        key={folderPath}
+                        key={folderPath} // Use folderPath for key
                         className="recent-folder-item"
                         onClick={() => selectRecentFolder(folderPath)}
                         title={folderPath}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => {
+                          // Basic keyboard accessibility
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             selectRecentFolder(folderPath);
@@ -767,13 +726,12 @@ const App = () => {
                         aria-label={`Open folder: ${basename(folderPath)}`}
                       >
                         <div className="recent-folder-content">
-                          {" "}
                           <span className="recent-folder-name">
                             {basename(folderPath)}
-                          </span>{" "}
+                          </span>
                           <span className="recent-folder-path">
                             {folderPath}
-                          </span>{" "}
+                          </span>
                         </div>
                         <button
                           className="recent-folder-delete"
@@ -785,8 +743,7 @@ const App = () => {
                             folderPath
                           )} from recent folders`}
                         >
-                          {" "}
-                          <X size={16} />{" "}
+                          <X size={16} />
                         </button>
                       </div>
                     ))}
@@ -800,19 +757,19 @@ const App = () => {
         {/* Main Layout */}
         {selectedFolder && (
           <div className="main-content">
-            {/* Log Main Layout render using comma operator */}
-            {renderCount < 3 &&
-              (logger.debug(
-                `Rendering Main Layout for ${selectedFolder} (Log 2)`
-              ),
-              null)}
-            {/* REMINDER: Adjust SidebarProps temporarily in types/FileTypes.ts */}
-            <Sidebar
-              selectedFolder={selectedFolder}
+            {/* IMPORTANT: SidebarProps in src/types/FileTypes.ts needs temporary adjustments */}
+            {/* until Sidebar is refactored to use the store directly. */}
+            {/* Mark unused props like allFiles, selectedFiles, etc. as optional (?) there. */}
+            {/* <Sidebar
+              selectedFolder={selectedFolder} // Pass for display
               openFolder={openFolder}
               refreshFolder={refreshFolder}
               reloadFolder={reloadFolder}
-            />
+              // The following props are intentionally omitted as Sidebar will get them from the store:
+              // allFiles, selectedFiles, toggleFileSelection, toggleFolderSelection,
+              // searchTerm, onSearchChange, selectAllFiles, deselectAllFiles,
+              // expandedNodes, toggleExpanded
+            /> */}
             <div className="content-area">
               {/* Header */}
               <div className="content-header">
@@ -829,8 +786,7 @@ const App = () => {
                       disabled={processingStatus.status === "processing"}
                       title="Select Folder"
                     >
-                      {" "}
-                      <FolderOpen size={16} />{" "}
+                      <FolderOpen size={16} />
                     </button>
                     {selectedFolder && (
                       <button
@@ -839,8 +795,7 @@ const App = () => {
                         disabled={processingStatus.status === "processing"}
                         title="Reload"
                       >
-                        {" "}
-                        <RefreshCw size={16} />{" "}
+                        <RefreshCw size={16} />
                       </button>
                     )}
                     {selectedFolder && (
@@ -849,8 +804,7 @@ const App = () => {
                         onClick={handleExitFolder}
                         title="Exit Folder"
                       >
-                        {" "}
-                        <LogOut size={16} />{" "}
+                        <LogOut size={16} />
                       </button>
                     )}
                   </div>
@@ -880,7 +834,6 @@ const App = () => {
                     </button>
                     {sortDropdownOpen && (
                       <div className="sort-options">
-                        {" "}
                         {sortOptions.map((option) => (
                           <div
                             key={option.value}
@@ -890,26 +843,25 @@ const App = () => {
                             onClick={() => handleSortChange(option.value)}
                             title={option.description}
                           >
-                            {" "}
-                            {option.icon} <span>{option.description}</span>{" "}
+                            {option.icon}
+                            <span>{option.description}</span>
                           </div>
-                        ))}{" "}
+                        ))}
                       </div>
                     )}
                   </div>
                   <div className="file-stats">
-                    {" "}
                     {selectedFiles.length} files | ~
-                    {totalSelectedTokens.toLocaleString()} tokens{" "}
+                    {totalSelectedTokens.toLocaleString()} tokens
                   </div>
                 </div>
               </div>
 
               {/* FileList */}
               <FileList
-                files={displayedFiles}
-                selectedFiles={selectedFiles}
-                toggleFileSelection={toggleFileSelection}
+                files={displayedFiles} // Pass the memoized sorted/filtered list
+                selectedFiles={selectedFiles} // Pass selection from store state
+                toggleFileSelection={toggleFileSelection} // Pass action directly
                 selectedFolder={selectedFolder}
                 view={fileListView}
               />
@@ -920,32 +872,28 @@ const App = () => {
                   checked={includePromptOverview}
                   onChange={() =>
                     setIncludePromptOverview(!includePromptOverview)
-                  }
+                  } // Use action
                   title={
                     includePromptOverview
                       ? "Exclude prompt overview from output"
                       : "Include prompt overview in output"
                   }
                 >
-                  <>
-                    <span>Include Overview</span>
-                  </>
+                  <span>Include Overview</span>
                 </FileTreeToggle>
                 <FileTreeToggle
                   checked={includeFileTree}
-                  onChange={() => setIncludeFileTree(!includeFileTree)}
+                  onChange={() => setIncludeFileTree(!includeFileTree)} // Use action
                   title={
                     includeFileTree
                       ? "Exclude file tree from output"
                       : "Include file tree in output"
                   }
                 >
-                  <>
-                    <span>Include File Tree</span>
-                  </>
+                  <span>Include File Tree</span>
                 </FileTreeToggle>
                 <CopyButton
-                  text={getSelectedFilesContent()}
+                  text={getSelectedFilesContent()} // Call the memoized function
                   className="primary full-width copy-files-btn"
                 >
                   <span>COPY ({selectedFiles.length} files)</span>
