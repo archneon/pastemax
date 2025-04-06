@@ -10,18 +10,21 @@ import {
 
 /**
  * Main key for storing all project states
+ * Kept for documentation but directly using LOCAL_STORAGE_KEYS.PROJECT_STATES instead
  */
-const PROJECT_STATES_KEY = "pastemax-project-states";
+// const PROJECT_STATES_KEY = "pastemax-project-states";
 
 /**
  * Key for storing the last selected directory
+ * Kept for documentation but directly using LOCAL_STORAGE_KEYS.LAST_SELECTED_FOLDER instead
  */
-const LAST_SELECTED_FOLDER_KEY = "pastemax-last-selected-folder";
+// const LAST_SELECTED_FOLDER_KEY = "pastemax-last-selected-folder";
 
 /**
  * Key for storing the list of recent folders
+ * Kept for documentation but directly using LOCAL_STORAGE_KEYS.RECENT_FOLDERS instead
  */
-const RECENT_FOLDERS_KEY = "pastemax-recent-folders";
+// const RECENT_FOLDERS_KEY = "pastemax-recent-folders";
 
 /**
  * Structure of an individual project's state

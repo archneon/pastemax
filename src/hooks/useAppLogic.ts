@@ -1,21 +1,12 @@
 // src/hooks/useAppLogic.ts
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { FileData } from "../types/FileTypes"; // Assuming FileTypes.ts exists relative to this new path
-import logger from "../utils/logger"; // Adjust path if needed
+import { useEffect, useRef, useCallback, useMemo } from "react";
+import logger from "../utils/logger";
 import {
-  generateAsciiFileTree,
   normalizePath,
-  arePathsEqual,
   comparePathsStructurally,
-  // basename, // Not needed directly in this hook
   getRelativePath,
-} from "../utils/pathUtils"; // Adjust path if needed
-import {
-  PROMPT_SECTIONS,
-  PROMPT_MARKERS,
-  PROJECT_TREE_CONFIG,
-} from "../constants"; // Adjust path if needed
-import { PromptSectionDefinition } from "../types/promptConfigTypes"; // Adjust path if needed
+} from "../utils/pathUtils";
+import { generatePromptContent } from "../utils/promptUtils";
 import {
   useProjectStore,
   selectCurrentSelectedFolder,
@@ -25,45 +16,13 @@ import {
   selectHasHydrated,
   getDefaultPerProjectState,
   selectNeedsFilesReload,
-} from "../store/projectStore"; // Adjust path if needed
-import { ProcessingStatus, PerProjectState } from "../types/projectStateTypes"; // Adjust path if needed
+} from "../store/projectStore";
+import { useIpcManager } from "./useIpcManager";
 
 // --- Define default values used by selectors ---
 // Defined outside hook for stability
 const defaultProjectStateValues = getDefaultPerProjectState();
 const defaultSelectedFiles: string[] = [];
-
-// --- Helper: Categorize File (copied from App.tsx, could be moved to utils) ---
-const categorizeFile = (
-  file: FileData,
-  currentSelectedFolder: string | null,
-  sections: PromptSectionDefinition[]
-): string => {
-  const defaultSection = sections.find((s) => s.directory === null);
-  const defaultSectionId = defaultSection?.id || "project_files";
-  if (
-    !currentSelectedFolder ||
-    file.descriptionForSectionId ||
-    file.isOverviewTemplate ||
-    file.isProjectTreeDescription
-  ) {
-    return defaultSectionId;
-  }
-  const relativePath = getRelativePath(file.path, currentSelectedFolder);
-  if (!relativePath) {
-    return defaultSectionId;
-  }
-  for (const section of sections) {
-    if (
-      section.directory &&
-      (relativePath === section.directory ||
-        relativePath.startsWith(section.directory + "/"))
-    ) {
-      return section.id;
-    }
-  }
-  return defaultSectionId;
-};
 
 // --- Custom Hook Definition ---
 export const useAppLogic = () => {
@@ -121,7 +80,6 @@ export const useAppLogic = () => {
   const {
     setCurrentSelectedFolder,
     setAllFiles: setStoreAllFilesAction,
-    setProcessingStatus: setStoreProcessingStatusAction,
     toggleFileSelection,
     setSortOrder,
     setSearchTerm,
@@ -137,6 +95,9 @@ export const useAppLogic = () => {
   const fileRequestSentRef = useRef<boolean>(false);
 
   const isElectron = window.electron !== undefined;
+
+  // --- Get IPC functionality ---
+  const { requestFileList } = useIpcManager();
 
   // --- Derived State Calculations ---
   const displayedFiles = useMemo(() => {
@@ -181,144 +142,24 @@ export const useAppLogic = () => {
     }, 0);
   }, [selectedFiles, allFiles]);
 
-  // --- Format marker helper ---
-  const formatMarker = useCallback(
-    (
-      template: string,
-      context: { section_name?: string; file_path?: string }
-    ): string => {
-      let result = template;
-      if (context.section_name !== undefined)
-        result = result.replace("{section_name}", context.section_name);
-      if (context.file_path !== undefined)
-        result = result.replace("{file_path}", context.file_path);
-      return result;
-    },
-    []
-  );
-
   // --- Generate Content for Copying ---
   const getSelectedFilesContent = useCallback(() => {
     logger.debug(
-      `Generating content for copying. Selected files: ${selectedFiles.length}`
+      `useAppLogic #${hookRenderCount.current}: Generating content for copying.`
     );
-    const selectedPathSet = new Set(selectedFiles.map(normalizePath));
-    const contentFiles = allFiles.filter(
-      (file) =>
-        selectedPathSet.has(normalizePath(file.path)) &&
-        !file.isBinary &&
-        !file.isSkipped &&
-        !file.descriptionForSectionId &&
-        !file.isOverviewTemplate &&
-        !file.isProjectTreeDescription
-    );
-    const descriptionMap: Record<string, string> = {};
-    let overviewContent: string | null = null;
-    allFiles.forEach((file) => {
-      if (file.content) {
-        if (file.descriptionForSectionId)
-          descriptionMap[file.descriptionForSectionId] = file.content;
-        else if (file.isProjectTreeDescription)
-          descriptionMap["project_tree"] = file.content;
-        else if (file.isOverviewTemplate) overviewContent = file.content;
-      }
+
+    return generatePromptContent({
+      allFiles,
+      selectedFiles,
+      selectedFolder,
+      sortOrder,
+      includeFileTree,
+      includePromptOverview,
     });
-    if (
-      contentFiles.length === 0 &&
-      !includeFileTree &&
-      !includePromptOverview
-    ) {
-      return "No text files selected, or tree/overview not included.";
-    }
-    const [sortKey, sortDir] = sortOrder.split("-");
-    const sortedContentFiles = [...contentFiles].sort((a, b) => {
-      let comparison = 0;
-      if (sortKey === "name") comparison = a.name.localeCompare(b.name);
-      else if (sortKey === "tokens")
-        comparison = (a.tokenCount || 0) - (b.tokenCount || 0);
-      else if (sortKey === "size") comparison = (a.size || 0) - (b.size || 0);
-      else if (sortKey === "path")
-        comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
-      return sortDir === "asc" ? comparison : -comparison;
-    });
-    let output = "";
-    const markers = PROMPT_MARKERS;
-    if (includePromptOverview && overviewContent) {
-      output +=
-        "==== SYSTEM_PROMPT_OVERVIEW ====\n" +
-        String(overviewContent).trim() +
-        "\n\n";
-    }
-    if (includeFileTree && selectedFolder) {
-      const treeSectionName = PROJECT_TREE_CONFIG.name;
-      const treeDescription = descriptionMap["project_tree"];
-      output +=
-        formatMarker(markers.section_open, { section_name: treeSectionName }) +
-        "\n";
-      if (treeDescription) {
-        output +=
-          markers.description_open +
-          "\n" +
-          String(treeDescription).trim() +
-          "\n" +
-          markers.description_close +
-          "\n\n";
-      }
-      output += ".\n";
-      const asciiTree = generateAsciiFileTree(
-        sortedContentFiles,
-        selectedFolder
-      );
-      output += asciiTree + "\n";
-      output +=
-        formatMarker(markers.section_close, { section_name: treeSectionName }) +
-        "\n\n";
-    }
-    const filesBySection: Record<string, FileData[]> = {};
-    const defaultSectionId =
-      PROMPT_SECTIONS.find((s) => s.directory === null)?.id || "project_files";
-    sortedContentFiles.forEach((file) => {
-      const sectionId =
-        file.sectionId || categorizeFile(file, selectedFolder, PROMPT_SECTIONS);
-      if (!filesBySection[sectionId]) filesBySection[sectionId] = [];
-      filesBySection[sectionId].push(file);
-    });
-    for (const section of PROMPT_SECTIONS) {
-      const sectionFiles = filesBySection[section.id];
-      if (!sectionFiles || sectionFiles.length === 0) continue;
-      output +=
-        formatMarker(markers.section_open, { section_name: section.name }) +
-        "\n\n";
-      const description = descriptionMap[section.id];
-      if (description) {
-        output +=
-          markers.description_open +
-          "\n" +
-          String(description).trim() +
-          "\n" +
-          markers.description_close +
-          "\n\n";
-      }
-      sectionFiles.forEach((file) => {
-        const relativePath = getRelativePath(file.path, selectedFolder);
-        output +=
-          formatMarker(markers.file_open, { file_path: relativePath }) + "\n";
-        output += file.content || "";
-        if (file.content && !file.content.endsWith("\n")) output += "\n";
-        output +=
-          formatMarker(markers.file_close, { file_path: relativePath }) +
-          "\n\n";
-      });
-      output +=
-        formatMarker(markers.section_close, { section_name: section.name }) +
-        "\n\n";
-    }
-    return output.trim();
   }, [
-    selectedFolder,
-    formatMarker,
     allFiles,
     selectedFiles,
+    selectedFolder,
     sortOrder,
     includeFileTree,
     includePromptOverview,
@@ -335,86 +176,6 @@ export const useAppLogic = () => {
     }
   }, [isElectron]);
 
-  const handleFolderSelectedIPC = useCallback(
-    (folderPath: string) => {
-      fileRequestSentRef.current = false; // Reset sent tracker
-      if (typeof folderPath === "string") {
-        logger.info(`IPC: folder-selected received: ${folderPath}`);
-        setCurrentSelectedFolder(folderPath);
-      } else {
-        logger.error(`IPC: Invalid folder path received: ${folderPath}`);
-        setStoreProcessingStatusAction({
-          status: "error",
-          message: "Invalid folder path received",
-        });
-      }
-    },
-    [setCurrentSelectedFolder, setStoreProcessingStatusAction]
-  );
-
-  const handleFileListDataIPC = useCallback(
-    (receivedData: FileData[] | { files: FileData[] }) => {
-      logger.info(`IPC: file-list-data received`);
-      const filesArray = Array.isArray(receivedData)
-        ? receivedData
-        : receivedData.files;
-      const currentSelectedFolder =
-        useProjectStore.getState().currentSelectedFolder;
-      const categorizedFiles = filesArray.map((file) => ({
-        ...file,
-        sectionId: categorizeFile(file, currentSelectedFolder, PROMPT_SECTIONS),
-      }));
-      logger.info(
-        `IPC: Setting ${categorizedFiles.length} categorized files in store.`
-      );
-      setStoreAllFilesAction(categorizedFiles);
-      setStoreProcessingStatusAction({
-        status: "complete",
-        message: `Loaded ${categorizedFiles.length} files`,
-      });
-      // Reset sent flag *after* files are successfully set and status is complete
-      // It's crucial this happens AFTER the state updates that might trigger the load effect again
-      // Using a microtask (like Promise.resolve().then()) might be safer if issues persist
-      Promise.resolve().then(() => {
-        fileRequestSentRef.current = false;
-        logger.debug(
-          "Reset fileRequestSentRef after successful file load (microtask)."
-        );
-      });
-    },
-    [setStoreAllFilesAction, setStoreProcessingStatusAction]
-  );
-
-  const handleProcessingStatusIPC = useCallback(
-    (status: ProcessingStatus) => {
-      logger.info(
-        `IPC: file-processing-status received: ${status.status} - ${status.message}`
-      );
-      setStoreProcessingStatusAction(status);
-    },
-    [setStoreProcessingStatusAction]
-  );
-
-  const requestFileList = useCallback(
-    (folderPath: string, forceRefresh: boolean = false) => {
-      if (!isElectron || !folderPath) return;
-      logger.info(
-        `Handler: requestFileList for ${folderPath}, forceRefresh: ${forceRefresh}`
-      );
-      setStoreProcessingStatusAction({
-        status: "processing",
-        message: forceRefresh
-          ? "Reloading folder..."
-          : "Requesting folder data...",
-      });
-      window.electron.ipcRenderer.send("request-file-list", {
-        path: folderPath,
-        forceRefresh: forceRefresh,
-      });
-    },
-    [isElectron, setStoreProcessingStatusAction]
-  );
-
   const refreshFolder = useCallback(() => {
     const currentSelectedFolder =
       useProjectStore.getState().currentSelectedFolder;
@@ -430,15 +191,15 @@ export const useAppLogic = () => {
     logger.info(`Handler: reloadFolder called`);
     refreshFolder();
   }, [refreshFolder]);
+
   const handleSortChange = useCallback(
     (newSort: string) => {
       logger.info(`Handler: handleSortChange called with ${newSort}`);
-      setSortOrder(
-        newSort
-      ); /* setSortDropdownOpen(false); // App handles dropdown state */
+      setSortOrder(newSort);
     },
     [setSortOrder]
   );
+
   const handleSearchChange = useCallback(
     (newSearch: string) => {
       logger.info(`Handler: handleSearchChange called with "${newSearch}"`);
@@ -446,6 +207,7 @@ export const useAppLogic = () => {
     },
     [setSearchTerm]
   );
+
   const handleViewChange = useCallback(
     (newView: "structured" | "flat") => {
       logger.info(`Handler: handleViewChange called with ${newView}`);
@@ -453,6 +215,7 @@ export const useAppLogic = () => {
     },
     [setFileListView]
   );
+
   const selectRecentFolder = useCallback(
     (folderPath: string) => {
       if (!isElectron) return;
@@ -462,15 +225,17 @@ export const useAppLogic = () => {
     },
     [isElectron, setCurrentSelectedFolder]
   );
+
   const removeRecentFolderHandler = useCallback(
     (folderPath: string) => {
-      /* Pass event in App */ logger.info(
+      logger.info(
         `Handler: removeRecentFolderHandler called with ${folderPath}`
       );
       removeRecentFolder(folderPath);
     },
     [removeRecentFolder]
   );
+
   const handleExitFolder = useCallback(() => {
     logger.info(`Handler: handleExitFolder called`);
     fileRequestSentRef.current = false;
@@ -478,42 +243,6 @@ export const useAppLogic = () => {
   }, [exitFolder]);
 
   // --- Effects ---
-  useEffect(() => {
-    // IPC Listeners
-    logger.debug(
-      `useAppLogic #${hookRenderCount.current}: Running useEffect for IPC listeners.`
-    );
-    if (!isElectron) return;
-    const folderSelectedHandler = handleFolderSelectedIPC;
-    const fileListDataHandler = handleFileListDataIPC;
-    const processingStatusHandler = handleProcessingStatusIPC;
-    window.electron.ipcRenderer.on("folder-selected", folderSelectedHandler);
-    window.electron.ipcRenderer.on("file-list-data", fileListDataHandler);
-    window.electron.ipcRenderer.on(
-      "file-processing-status",
-      processingStatusHandler
-    );
-    return () => {
-      window.electron.ipcRenderer.removeListener(
-        "folder-selected",
-        folderSelectedHandler
-      );
-      window.electron.ipcRenderer.removeListener(
-        "file-list-data",
-        fileListDataHandler
-      );
-      window.electron.ipcRenderer.removeListener(
-        "file-processing-status",
-        processingStatusHandler
-      );
-    };
-  }, [
-    isElectron,
-    handleFolderSelectedIPC,
-    handleFileListDataIPC,
-    handleProcessingStatusIPC,
-  ]);
-
   useEffect(() => {
     // File Load Trigger based on needsFilesReload flag
     logger.debug(
@@ -612,7 +341,5 @@ export const useAppLogic = () => {
     setIncludePromptOverview, // Pass to App for FileTreeToggle
     getSelectedFilesContent, // Pass to App for CopyButton
     toggleFileSelection, // Pass to FileList -> FileCard
-    // Note: Actions like selectAllFiles, deselectAllFiles, toggleFolderSelection, toggleExpandedNode
-    // will be used directly by Sidebar/TreeItem via store access.
   };
 };

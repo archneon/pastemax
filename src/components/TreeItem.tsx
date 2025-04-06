@@ -3,7 +3,7 @@ import React, { useRef, useEffect, useMemo, useCallback } from "react";
 import { TreeNode } from "../types/FileTypes"; // Keep TreeNode
 // Removed unused type imports like MouseEventType, ChangeEventType if not needed elsewhere in this file specifically
 import { ChevronRight, File } from "lucide-react"; // Removed Folder if not used
-import { arePathsEqual, normalizePath } from "../utils/pathUtils";
+import { normalizePath } from "../utils/pathUtils";
 import { useProjectStore } from "../store/projectStore";
 
 interface TreeItemProps {
@@ -12,7 +12,6 @@ interface TreeItemProps {
 
 const TreeItem = ({ node }: TreeItemProps) => {
   const {
-    id,
     name,
     path,
     type,

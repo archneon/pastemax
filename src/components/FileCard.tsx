@@ -1,5 +1,4 @@
 import React from "react";
-import { FileCardProps } from "../types/FileTypes";
 import { Plus, X, FileText } from "lucide-react";
 import CopyButton from "./CopyButton";
 import { getRelativePath } from "../utils/pathUtils";

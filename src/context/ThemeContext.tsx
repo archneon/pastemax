@@ -1,5 +1,5 @@
 // src/context/ThemeContext.tsx
-import React, { createContext, useState, useEffect, useContext } from "react";
+import React from "react";
 import { LOCAL_STORAGE_KEYS, THEME_OPTIONS, ThemeValue } from "../constants";
 
 type ThemeType = ThemeValue;
@@ -18,14 +18,14 @@ const defaultThemeContext: ThemeContextType = {
   setTheme: () => {},
 };
 
-const ThemeContext = createContext(defaultThemeContext);
+const ThemeContext = React.createContext(defaultThemeContext);
 
 type ThemeProviderProps = { children: React.ReactNode }; // Use React.ReactNode for children
 
 export const ThemeProvider = ({
   children,
 }: ThemeProviderProps): JSX.Element => {
-  const [theme, setThemeState] = useState<ThemeType>(() => {
+  const [theme, setThemeState] = React.useState<ThemeType>(() => {
     // Explicit type for theme state
     const savedTheme = localStorage.getItem(
       LOCAL_STORAGE_KEYS.THEME
@@ -37,7 +37,7 @@ export const ThemeProvider = ({
   });
 
   // Explicitly define the type for currentTheme state
-  const [currentTheme, setCurrentTheme] = useState<AppliedTheme>(
+  const [currentTheme, setCurrentTheme] = React.useState<AppliedTheme>(
     THEME_OPTIONS.LIGHT
   );
 
@@ -48,7 +48,7 @@ export const ThemeProvider = ({
   };
 
   // Effect to apply the correct theme
-  useEffect(() => {
+  React.useEffect(() => {
     // Function now expects AppliedTheme type
     const applyTheme = (themeName: AppliedTheme) => {
       setCurrentTheme(themeName); // This should now work
@@ -91,11 +91,5 @@ export const ThemeProvider = ({
   );
 };
 
-// Custom hook to use the theme context
-export const useTheme = () => {
-  const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error("useTheme must be used within a ThemeProvider");
-  }
-  return context;
-};
+// Export the context for the custom hook
+export { ThemeContext };

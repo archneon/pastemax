@@ -15,7 +15,8 @@ interface Logger {
 }
 
 // We're always in a renderer context when using this module from React
-const isRenderer = typeof window !== "undefined";
+// This is kept as documentation but not used directly
+// const isRenderer = typeof window !== "undefined";
 
 // Generate a unique instance ID for this logger - helps diagnose multiple instances
 const INSTANCE_ID = Math.random().toString(36).substring(2, 8);

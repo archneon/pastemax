@@ -1,6 +1,6 @@
 // src/store/projectStore.ts
 import { create } from "zustand";
-import { persist, createJSONStorage, StateStorage } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import {
   ProjectState, // Ensure this interface includes _needsFilesReload and setNeedsFilesReload
   PerProjectState,
@@ -238,35 +238,43 @@ export const useProjectStore = create<ProjectState>()(
         });
       },
 
-      toggleFileSelection: (filePath: string) => {
-        const currentFolder = get().currentSelectedFolder;
-        if (!currentFolder) return;
-        const projectState = get().projects[currentFolder];
-        if (!projectState) return;
-        const normalizedPath = normalizePath(filePath);
-        const currentSelection = projectState.selectedFiles;
-        const isSelected = currentSelection.some((p: string) =>
-          arePathsEqual(p, normalizedPath)
+      toggleFileSelection: (path: string) => {
+        const state = useProjectStore.getState();
+        if (!state.currentSelectedFolder) return;
+
+        const currentFolder = state.currentSelectedFolder;
+        const project = state.projects[currentFolder];
+        if (!project) return;
+
+        // Create a new set from the current selection
+        const currentSelection = new Set(
+          project.selectedFiles.map(normalizePath)
         );
-        let newSelection: string[];
-        if (isSelected) {
-          newSelection = currentSelection.filter(
-            (p: string) => !arePathsEqual(p, normalizedPath)
-          );
+
+        // Toggle the selection status
+        const normalizedPath = normalizePath(path);
+        if (currentSelection.has(normalizedPath)) {
+          currentSelection.delete(normalizedPath);
         } else {
-          newSelection = [...currentSelection, normalizedPath];
+          currentSelection.add(normalizedPath);
         }
-        get()._updateCurrentProjectState("selectedFiles", newSelection);
+
+        const newSelectedFiles = Array.from(currentSelection);
+
+        state.projects[currentFolder] = {
+          ...project,
+          selectedFiles: newSelectedFiles,
+        };
       },
 
       toggleFolderSelection: (folderPath: string, select: boolean) => {
-        const currentFolder = get().currentSelectedFolder;
-        if (!currentFolder) return;
-        const projectState = get().projects[currentFolder];
-        const allFiles = get().allFiles;
-        if (!projectState || !allFiles || allFiles.length === 0) return;
+        const state = get();
+        if (!state.currentSelectedFolder) return;
+        const currentFolder = state.currentSelectedFolder;
+        const projectState = state.projects[currentFolder];
+        if (!projectState) return;
         const normalizedFolderPath = normalizePath(folderPath);
-        const filesToToggle = allFiles
+        const filesToToggle = state.allFiles
           .filter(
             (file: FileData) =>
               !file.isBinary &&
@@ -279,7 +287,7 @@ export const useProjectStore = create<ProjectState>()(
           logger.debug(`No files found to toggle in folder: ${folderPath}`);
           return;
         }
-        let currentSelection = [...projectState.selectedFiles];
+        const currentSelection = [...projectState.selectedFiles];
         const selectionSet = new Set(currentSelection);
         if (select) {
           logger.debug(`Selecting files in folder: ${folderPath}`);

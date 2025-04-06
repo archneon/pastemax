@@ -41,7 +41,6 @@ SidebarProps) => {
   const allFiles = useProjectStore(selectStoreAllFilesHook);
   // Get state specific to the current project using selector
   const {
-    selectedFiles,
     searchTerm,
     expandedNodes: expandedNodesArray, // Get as array from store
   } = useProjectStore(selectCurrentProjectState);
@@ -51,9 +50,6 @@ SidebarProps) => {
     setSearchTerm,
     selectAllFiles, // Action
     deselectAllFiles, // Action
-    toggleFileSelection, // Action passed to TreeItem
-    toggleFolderSelection, // Action passed to TreeItem
-    toggleExpandedNode, // Action passed to TreeItem
   } = useProjectStore.getState();
 
   // --- Internal Component State ---
