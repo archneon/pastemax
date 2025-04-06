@@ -10,9 +10,7 @@ export interface FileData {
   fileType?: string;
   excludedByDefault?: boolean;
   sectionId?: string;
-  descriptionForSectionId?: string | null;
-  isOverviewTemplate?: boolean;
-  isProjectTreeDescription?: boolean;
+  fileKind: "overview" | "regular";
 }
 
 export interface TreeNode {

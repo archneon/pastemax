@@ -53,7 +53,8 @@ const TreeItem = ({ node }: TreeItemProps) => {
           child.type === "file" &&
           child.fileData &&
           !child.fileData.isBinary &&
-          !child.fileData.isSkipped
+          !child.fileData.isSkipped &&
+          child.fileData.fileKind !== "overview"
         ) {
           paths.push(normalizePath(child.path));
         } else if (child.type === "directory") {
@@ -119,7 +120,13 @@ const TreeItem = ({ node }: TreeItemProps) => {
 
   // --- Other Logic ---
   const isDisabled = useMemo(
-    () => !!(fileData && (fileData.isBinary || fileData.isSkipped)),
+    () =>
+      !!(
+        fileData &&
+        (fileData.isBinary ||
+          fileData.isSkipped ||
+          fileData.fileKind === "overview")
+      ),
     [fileData]
   );
   const isExcludedByDefault = useMemo(
@@ -219,7 +226,11 @@ const TreeItem = ({ node }: TreeItemProps) => {
         {isDisabled && fileData && (
           <span className="tree-item-badge">
             {" "}
-            {fileData.isBinary ? "Binary" : "Skipped"}{" "}
+            {fileData.fileKind === "overview"
+              ? "Overview"
+              : fileData.isBinary
+              ? "Binary"
+              : "Skipped"}{" "}
           </span>
         )}
         {!isDisabled && isExcludedByDefault && (

@@ -166,9 +166,7 @@ export const useAppLogic = () => {
         selectedPathsSet.has(normalizePath(file.path)) &&
         !file.isBinary &&
         !file.isSkipped &&
-        !file.descriptionForSectionId &&
-        !file.isOverviewTemplate &&
-        !file.isProjectTreeDescription
+        file.fileKind === "regular"
     ).length;
     logger.debug(`useAppLogic: Calculated selectedContentFilesCount: ${count}`);
     return count;

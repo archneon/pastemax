@@ -18,15 +18,13 @@ const FileList = ({
 }: ExtendedFileListProps) => {
   const selectedPathsSet = new Set(selectedFiles.map(normalizePath)); // Keep using normalized paths for checking selection
 
-  // Filter for files to *display* in the list (selected, not binary/skipped, not special description/overview files)
+  // Filter for files to *display* in the list (selected, not binary/skipped, only regular files)
   const displayableFiles = files.filter(
     (file) =>
       selectedPathsSet.has(file.path) && // Already normalized? Ensure consistency
       !file.isBinary &&
       !file.isSkipped &&
-      !file.descriptionForSectionId &&
-      !file.isOverviewTemplate &&
-      !file.isProjectTreeDescription // Exclude tree description too
+      file.fileKind === "regular"
   );
 
   // Grouping logic for structured view

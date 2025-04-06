@@ -7,11 +7,7 @@ import {
   comparePathsStructurally,
 } from "./pathUtils";
 import logger from "./logger";
-import {
-  PROMPT_SECTIONS,
-  PROMPT_MARKERS,
-  PROJECT_TREE_CONFIG,
-} from "../constants";
+import { PROMPT_SECTIONS, PROMPT_MARKERS } from "../constants";
 
 // Define the structure for the input state needed by the generator
 interface PromptDataArgs {
@@ -48,22 +44,12 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
       selectedPathSet.has(normalizePath(file.path)) &&
       !file.isBinary &&
       !file.isSkipped &&
-      !file.descriptionForSectionId &&
-      !file.isOverviewTemplate &&
-      !file.isProjectTreeDescription
+      file.fileKind === "regular"
   );
 
-  const descriptionMap: Record<string, string> = {};
-  let overviewContent: string | null = null;
-  allFiles.forEach((file: FileData) => {
-    if (file.content) {
-      if (file.descriptionForSectionId)
-        descriptionMap[file.descriptionForSectionId] = file.content;
-      else if (file.isProjectTreeDescription)
-        descriptionMap["project_tree"] = file.content;
-      else if (file.isOverviewTemplate) overviewContent = file.content;
-    }
-  });
+  // Find the overview file
+  const overviewFile = allFiles.find((file) => file.fileKind === "overview");
+  const overviewContent = overviewFile ? overviewFile.content : null;
 
   if (contentFiles.length === 0 && !includeFileTree && !includePromptOverview) {
     return "No text files selected, or tree/overview not included.";
@@ -92,25 +78,14 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
   }
 
   if (includeFileTree && selectedFolder) {
-    const treeSectionName = PROJECT_TREE_CONFIG.name;
-    const treeDescription = descriptionMap["project_tree"];
     output +=
-      formatMarker(markers.section_open, { section_name: treeSectionName }) +
+      formatMarker(markers.section_open, { section_name: "PROJECT_TREE" }) +
       "\n";
-    if (treeDescription) {
-      output +=
-        markers.description_open +
-        "\n" +
-        String(treeDescription).trim() +
-        "\n" +
-        markers.description_close +
-        "\n\n";
-    }
     output += ".\n";
     const asciiTree = generateAsciiFileTree(sortedContentFiles, selectedFolder);
     output += asciiTree + "\n";
     output +=
-      formatMarker(markers.section_close, { section_name: treeSectionName }) +
+      formatMarker(markers.section_close, { section_name: "PROJECT_TREE" }) +
       "\n\n";
   }
 
@@ -128,16 +103,7 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
     output +=
       formatMarker(markers.section_open, { section_name: section.name }) +
       "\n\n";
-    const description = descriptionMap[section.id];
-    if (description) {
-      output +=
-        markers.description_open +
-        "\n" +
-        String(description).trim() +
-        "\n" +
-        markers.description_close +
-        "\n\n";
-    }
+
     sectionFiles.forEach((file) => {
       const relativePath = getRelativePath(file.path, selectedFolder);
       output +=

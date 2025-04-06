@@ -11,7 +11,6 @@ const {
   DESCRIPTIONS_DIR,
   OVERVIEW_FILENAME,
   PROMPT_SECTIONS,
-  PROJECT_TREE_CONFIG,
 } = require("../constants"); // Goes up one level
 const {
   excludedFiles,
@@ -161,25 +160,14 @@ function readFilesRecursively(dir, rootDir, ignoreFilter, eventSender) {
           const parentDirRelative = normalizePath(path.dirname(relativePath));
 
           if (parentDirRelative === DESCRIPTIONS_DIR) {
-            // Special file logic...
+            // Special file logic
             if (dirent.name === OVERVIEW_FILENAME) {
               fileData.fileKind = "overview";
-            } else if (
-              dirent.name === PROJECT_TREE_CONFIG.descriptionFilename
-            ) {
-              fileData.fileKind = "projectTreeDescription";
             } else {
-              const matchingSection = PROMPT_SECTIONS.find(
-                (s) => s.descriptionFilename === dirent.name
-              );
-              if (matchingSection) {
-                fileData.fileKind = "sectionDescription";
-                fileData.sectionId = matchingSection.id;
-              } else {
-                fileData.fileKind = "regular";
-                fileData.isSkipped = true;
-                fileData.error = "Unknown file in descriptions directory";
-              }
+              fileData.fileKind = "regular";
+              fileData.isSkipped = true;
+              fileData.error =
+                "Only overview.txt is supported in descriptions directory";
             }
           } else {
             // Assign sectionId for REGULAR files

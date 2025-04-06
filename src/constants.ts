@@ -59,12 +59,6 @@ export const PROMPT_MARKERS = {
   file_close: ">>>> FILE_END: {file_path}",
 };
 
-// Project Tree Configuration (Simplified)
-export const PROJECT_TREE_CONFIG = {
-  name: "PROJECT_TREE", // Name for markers
-  descriptionFilename: "project_tree.txt", // Optional description filename within DESCRIPTIONS_DIR
-};
-
 // Section Definitions - ORDER MATTERS for output and structured UI!
 export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
   {
@@ -72,7 +66,6 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     name: "RULES",
     label: "Rules",
     directory: "ai/rules",
-    descriptionFilename: "rules.txt",
     color: "var(--warning-color)",
   },
   {
@@ -80,7 +73,6 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     name: "SCRAPED_DOCUMENTATION",
     label: "Scraped Docs",
     directory: "ai/scraped",
-    descriptionFilename: "scraped.txt",
     color: "var(--success-color)",
   },
   {
@@ -88,7 +80,6 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     name: "PROJECT_FILES",
     label: "Project",
     directory: null, // Indicates this is the default/fallback
-    descriptionFilename: "project_files.txt", // Optional description for default files
     color: "var(--accent-blue)",
   },
   {
@@ -96,7 +87,6 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     name: "PROMPTS",
     label: "Prompts",
     directory: "ai/prompts",
-    descriptionFilename: "prompts.txt",
     color: "var(--error-color)",
   },
 ];

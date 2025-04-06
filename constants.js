@@ -28,33 +28,23 @@ const PROMPT_SECTIONS = [
     id: "rules",
     name: "RULES",
     directory: "ai/rules",
-    descriptionFilename: "rules.txt",
   },
   {
     id: "scraped",
     name: "SCRAPED_DOCUMENTATION",
     directory: "ai/scraped",
-    descriptionFilename: "scraped.txt",
   },
   {
     id: "project_files",
     name: "PROJECT_FILES",
     directory: null,
-    descriptionFilename: "project_files.txt",
   },
   {
     id: "prompts",
     name: "PROMPTS",
     directory: "ai/prompts",
-    descriptionFilename: "prompts.txt",
   },
 ];
-
-// Tree description configuration
-const PROJECT_TREE_CONFIG = {
-  name: "PROJECT_TREE",
-  descriptionFilename: "project_tree.txt",
-};
 
 module.exports = {
   IPC_CHANNELS,
@@ -62,6 +52,5 @@ module.exports = {
   DESCRIPTIONS_DIR,
   OVERVIEW_FILENAME,
   PROMPT_SECTIONS,
-  PROJECT_TREE_CONFIG,
   // Add any other constants needed only by main.js/preload.js here
 };

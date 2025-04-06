@@ -34,12 +34,7 @@ export const categorizeFile = (
 ): string => {
   const defaultSection = sections.find((s) => s.directory === null);
   const defaultSectionId = defaultSection?.id || "project_files";
-  if (
-    !currentSelectedFolder ||
-    file.descriptionForSectionId ||
-    file.isOverviewTemplate ||
-    file.isProjectTreeDescription
-  ) {
+  if (!currentSelectedFolder || file.fileKind !== "regular") {
     return defaultSectionId;
   }
   const relativePath = getRelativePath(file.path, currentSelectedFolder);
