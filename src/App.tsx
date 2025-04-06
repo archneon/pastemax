@@ -11,10 +11,7 @@ import Sidebar from "./components/Sidebar";
 import FileList from "./components/FileList";
 import CopyButton from "./components/CopyButton";
 import FileTreeToggle from "./components/FileTreeToggle";
-// Ensure SidebarProps is NOT imported if TreeItemProps etc. were there
-// We might need to define props for components like FileList locally or in their own files
-// if they were previously in FileTypes.ts and cause conflicts now.
-import { FileData, SidebarProps } from "./types/FileTypes";
+import { FileData, SidebarProps } from "./types/FileTypes"; // Import SidebarProps
 import { ThemeProvider } from "./context/ThemeContext";
 import ThemeToggle from "./components/ThemeToggle";
 import FileListToggle from "./components/FileListToggle";
@@ -210,7 +207,8 @@ const App = () => {
   const sortDropdownRef: React.RefObject<HTMLDivElement> =
     useRef<HTMLDivElement>(null);
 
-  // Removed the loadTriggeredForFolderRef as the logic is now handled by _needsFilesReload flag in the store
+  // --- Ref to prevent duplicate requests in quick succession ---
+  const fileRequestSentRef = useRef<boolean>(false);
 
   const isElectron = window.electron !== undefined;
 
@@ -279,7 +277,6 @@ const App = () => {
     ); // Log inside call
     const selectedPathSet = new Set(selectedFiles.map(normalizePath));
 
-    // Use allFiles directly from component scope (derived from store)
     const contentFiles = allFiles.filter(
       (file: FileData) =>
         selectedPathSet.has(normalizePath(file.path)) &&
@@ -302,7 +299,6 @@ const App = () => {
       }
     });
 
-    // Use includeFileTree and includePromptOverview from component scope
     if (
       contentFiles.length === 0 &&
       !includeFileTree &&
@@ -311,7 +307,6 @@ const App = () => {
       return "No text files selected, or tree/overview not included.";
     }
 
-    // Use sortOrder from component scope
     const [sortKey, sortDir] = sortOrder.split("-");
     const sortedContentFiles = [...contentFiles].sort((a, b) => {
       let comparison = 0;
@@ -327,14 +322,12 @@ const App = () => {
     let output = "";
     const markers = PROMPT_MARKERS;
 
-    // Use includePromptOverview from component scope
     if (includePromptOverview && overviewContent) {
       output +=
         "==== SYSTEM_PROMPT_OVERVIEW ====\n" +
         String(overviewContent).trim() +
         "\n\n";
     }
-    // Use includeFileTree from component scope
     if (includeFileTree && selectedFolder) {
       const treeSectionName = PROJECT_TREE_CONFIG.name;
       const treeDescription = descriptionMap["project_tree"];
@@ -365,7 +358,6 @@ const App = () => {
     const defaultSectionId =
       PROMPT_SECTIONS.find((s) => s.directory === null)?.id || "project_files";
     sortedContentFiles.forEach((file) => {
-      // Use selectedFolder from component scope
       const sectionId =
         file.sectionId || categorizeFile(file, selectedFolder, PROMPT_SECTIONS);
       if (!filesBySection[sectionId]) filesBySection[sectionId] = [];
@@ -389,7 +381,6 @@ const App = () => {
           "\n\n";
       }
       sectionFiles.forEach((file) => {
-        // Use selectedFolder from component scope
         const relativePath = getRelativePath(file.path, selectedFolder);
         output +=
           formatMarker(markers.file_open, { file_path: relativePath }) + "\n";
@@ -405,7 +396,7 @@ const App = () => {
     }
     return output.trim();
   }, [
-    // Ensure all state variables used inside are listed as dependencies
+    // Dependencies reflect the state used from the store selectors
     selectedFolder,
     formatMarker,
     allFiles,
@@ -416,17 +407,20 @@ const App = () => {
   ]);
 
   // --- Event Handlers ---
-  // Handlers call actions, they don't need the ref manipulation anymore
   const openFolder = useCallback(() => {
     if (isElectron) {
       logger.info("Handler: openFolder");
+      fileRequestSentRef.current = false;
       window.electron.ipcRenderer.send("open-folder");
     } else {
       logger.warn("Folder selection not available in browser");
     }
-  }, [isElectron]);
+  }, [isElectron]); // Reset ref on new dialog
+
+  // Modified handler to reset ref
   const handleFolderSelectedIPC = useCallback(
     (folderPath: string) => {
+      fileRequestSentRef.current = false; // Reset sent tracker
       if (typeof folderPath === "string") {
         logger.info(`IPC: folder-selected received: ${folderPath}`);
         setCurrentSelectedFolder(folderPath);
@@ -440,6 +434,7 @@ const App = () => {
     },
     [setCurrentSelectedFolder, setStoreProcessingStatusAction]
   );
+
   const handleFileListDataIPC = useCallback(
     (receivedData: FileData[] | { files: FileData[] }) => {
       logger.info(`IPC: file-list-data received`);
@@ -460,14 +455,24 @@ const App = () => {
         status: "complete",
         message: `Loaded ${categorizedFiles.length} files`,
       });
+      // Reset sent flag *after* files are successfully set and status is complete
+      fileRequestSentRef.current = false;
+      logger.debug("Reset fileRequestSentRef after successful file load.");
     },
     [setStoreAllFilesAction, setStoreProcessingStatusAction]
   );
+
   const handleProcessingStatusIPC = useCallback(
     (status: ProcessingStatus) => {
       logger.info(
         `IPC: file-processing-status received: ${status.status} - ${status.message}`
       );
+      // Reset the sent flag if processing completes or errors out,
+      // allowing a new request if needed (e.g., if needsReload is still true)
+      if (status.status === "complete" || status.status === "error") {
+        // fileRequestSentRef.current = false; // Let the main useEffect handle resetting based on needsFilesReload becoming false
+        // logger.debug(`Reset fileRequestSentRef because processing status is ${status.status}`);
+      }
       setStoreProcessingStatusAction(status);
     },
     [setStoreProcessingStatusAction]
@@ -491,19 +496,23 @@ const App = () => {
     },
     [isElectron, setStoreProcessingStatusAction]
   );
-  // refreshFolder now implicitly relies on setCurrentSelectedFolder setting the needsReload flag
+
+  // Modified handler to reset ref
   const refreshFolder = useCallback(() => {
     const currentSelectedFolder =
       useProjectStore.getState().currentSelectedFolder;
     if (currentSelectedFolder) {
       logger.info(`Handler: refreshFolder called for ${currentSelectedFolder}`);
+      fileRequestSentRef.current = false; // Reset sent tracker
+      useProjectStore.getState().setNeedsFilesReload(true); // Explicitly signal need to reload
       requestFileList(currentSelectedFolder, true);
     }
-  }, [requestFileList]);
+  }, [requestFileList]); // requestFileList dependency
+
   const reloadFolder = useCallback(() => {
     logger.info(`Handler: reloadFolder called`);
     refreshFolder();
-  }, [refreshFolder]);
+  }, [refreshFolder]); // Dependency is stable callback
   const handleSortChange = useCallback(
     (newSort: string) => {
       logger.info(`Handler: handleSortChange called with ${newSort}`);
@@ -511,30 +520,33 @@ const App = () => {
       setSortDropdownOpen(false);
     },
     [setSortOrder]
-  );
+  ); // Dependency is action
   const handleSearchChange = useCallback(
     (newSearch: string) => {
       logger.info(`Handler: handleSearchChange called with "${newSearch}"`);
       setSearchTerm(newSearch);
     },
     [setSearchTerm]
-  );
+  ); // Dependency is action
   const handleViewChange = useCallback(
     (newView: "structured" | "flat") => {
       logger.info(`Handler: handleViewChange called with ${newView}`);
       setFileListView(newView);
     },
     [setFileListView]
-  );
-  // selectRecentFolder now implicitly relies on setCurrentSelectedFolder setting the needsReload flag
+  ); // Dependency is action
+
+  // Modified handler to reset ref
   const selectRecentFolder = useCallback(
     (folderPath: string) => {
       if (!isElectron) return;
+      fileRequestSentRef.current = false; // Reset sent tracker
       logger.info(`Handler: selectRecentFolder called with ${folderPath}`);
-      setCurrentSelectedFolder(folderPath);
+      setCurrentSelectedFolder(folderPath); // This action sets needsFilesReload=true
     },
     [isElectron, setCurrentSelectedFolder]
-  );
+  ); // Dependencies include action
+
   const removeRecentFolderHandler = useCallback(
     (folderPath: string, event: MouseEvent) => {
       event.stopPropagation();
@@ -544,12 +556,14 @@ const App = () => {
       removeRecentFolder(folderPath);
     },
     [removeRecentFolder]
-  );
-  // handleExitFolder now implicitly relies on exitFolder action setting needsReload=false
+  ); // Dependency is action
+
+  // Modified handler to reset ref
   const handleExitFolder = useCallback(() => {
     logger.info(`Handler: handleExitFolder called`);
-    exitFolder();
-  }, [exitFolder]);
+    fileRequestSentRef.current = false; // Reset sent tracker
+    exitFolder(); // This action sets needsFilesReload=false
+  }, [exitFolder]); // Dependency is action
 
   // --- Effects ---
   useEffect(() => {
@@ -592,127 +606,82 @@ const App = () => {
     handleProcessingStatusIPC,
   ]); // Dependencies are stable callbacks
 
-  // *** Final Attempt useEffect for File Load ***
+  // *** useEffect for File Load with request sent tracking ***
   useEffect(() => {
     logger.debug(
       `Render #${renderCount}: Running useEffect for file load check. ` +
         `Hydrated: ${hasHydrated}, Electron: ${isElectron}, Folder: ${selectedFolder}, ` +
-        `NeedsReload: ${needsFilesReload}` // Removed Status from this log for clarity
+        `NeedsReload: ${needsFilesReload}, Status: ${processingStatus.status}, ` +
+        `FileRequestSent: ${fileRequestSentRef.current}` // Log new ref
     );
 
-    // Load files ONLY if:
-    // 1. Hydrated and in Electron
-    // 2. A folder is selected
-    // 3. The needsFilesReload flag is true
-    // Note: We removed the check for processingStatus !== 'processing' here.
-    // We rely on setNeedsFilesReload(false) being called immediately after requestFileList
-    // to prevent immediate re-triggering within the same render cycle.
-    if (hasHydrated && isElectron && selectedFolder && needsFilesReload) {
-      logger.info(
-        `Effect: Triggering requestFileList for ${selectedFolder} because needsFilesReload is TRUE.`
-      );
-      requestFileList(selectedFolder, false); // Request files
-      // CRITICAL: Reset the flag immediately after triggering the request
-      setNeedsFilesReload(false);
-    } else if (needsFilesReload) {
-      // Log if flag is true but other conditions aren't met (e.g., no folder)
-      logger.warn(
-        `Effect: needsFilesReload is TRUE but conditions not met. Folder: ${selectedFolder}, Hydrated: ${hasHydrated}. Resetting flag.`
-      );
-      // Reset flag if no folder is selected to prevent stale state
-      if (!selectedFolder) {
+    // Conditions for loading:
+    if (hasHydrated && isElectron && selectedFolder) {
+      // Check if reload is needed AND a request hasn't already been sent in this cycle
+      if (
+        needsFilesReload &&
+        !fileRequestSentRef.current &&
+        processingStatus.status !== "processing"
+      ) {
+        logger.info(
+          `Effect: Triggering requestFileList for ${selectedFolder} because needsFilesReload is TRUE and request not sent yet.`
+        );
+        // Mark that request is being sent for this cycle
+        fileRequestSentRef.current = true;
+        requestFileList(selectedFolder, false); // Request files
+        // Reset the store flag immediately
         setNeedsFilesReload(false);
+      } else if (needsFilesReload && fileRequestSentRef.current) {
+        logger.debug(
+          `Effect: needsFilesReload is TRUE for ${selectedFolder}, but request already sent in this cycle. Skipping.`
+        );
+      } else if (needsFilesReload && processingStatus.status === "processing") {
+        logger.debug(
+          `Effect: needsFilesReload is TRUE for ${selectedFolder}, but skipping because status is 'processing'.`
+        );
+      } else if (!needsFilesReload) {
+        // If reload is not needed, ensure the sent flag is also reset for the next potential trigger
+        if (fileRequestSentRef.current) {
+          logger.debug(
+            "Effect: Resetting fileRequestSentRef because needsFilesReload is false."
+          );
+          fileRequestSentRef.current = false;
+        }
       }
     }
-
-    // Clear files if no folder selected (This logic can stay or be removed if exitFolder handles it reliably)
-    // else if (hasHydrated && !selectedFolder) {
-    //     const currentAllFiles = useProjectStore.getState().allFiles;
-    //     if (currentAllFiles.length > 0) {
-    //         logger.debug("Effect: No folder selected, clearing allFiles.");
-    //         setStoreAllFilesAction([]);
-    //     }
-    // }
+    // Conditions for clearing state when no folder is selected
+    else if (hasHydrated && !selectedFolder) {
+      const currentAllFiles = useProjectStore.getState().allFiles;
+      // Combine flag resets here
+      if (
+        allFiles.length > 0 ||
+        needsFilesReload ||
+        fileRequestSentRef.current
+      ) {
+        logger.debug(
+          "Effect: No folder selected, clearing allFiles and resetting flags/refs."
+        );
+        if (allFiles.length > 0) setStoreAllFilesAction([]);
+        if (needsFilesReload) setNeedsFilesReload(false);
+        fileRequestSentRef.current = false; // Reset sent flag
+      }
+    }
 
     if (!hasHydrated) {
       logger.debug(`Render #${renderCount}: Waiting for store hydration...`);
     }
-    // Dependencies: Only react when folder, hydration, or the flag changes.
-    // Actions requestFileList and setNeedsFilesReload are stable.
+    // Dependencies: Re-run when primary conditions change, or when the request flag might need reset
+    // Removed allFiles.length as dependency, rely on needsFilesReload flag and status
   }, [
     selectedFolder,
     hasHydrated,
     isElectron,
     needsFilesReload,
+    processingStatus.status,
     requestFileList,
     setNeedsFilesReload,
+    setStoreAllFilesAction,
   ]);
-
-  // // *** FINAL Simplified useEffect for File Load based on _needsFilesReload flag ***
-  // useEffect(() => {
-  //   logger.debug(
-  //     `Render #${renderCount}: Running useEffect for file load trigger check. ` +
-  //       `Hydrated: ${hasHydrated}, Electron: ${isElectron}, Folder: ${selectedFolder}, ` +
-  //       `NeedsReload: ${needsFilesReload}, Status: ${processingStatus.status}`
-  //   );
-
-  //   // Conditions for loading: Hydrated, Electron context, Folder selected, Reload Flag is true, and not already processing
-  //   if (
-  //     hasHydrated &&
-  //     isElectron &&
-  //     selectedFolder &&
-  //     needsFilesReload &&
-  //     processingStatus.status !== "processing"
-  //   ) {
-  //     logger.info(
-  //       `Effect: Triggering requestFileList for ${selectedFolder} because needsFilesReload is TRUE.`
-  //     );
-  //     requestFileList(selectedFolder, false); // Request files
-  //     // CRITICAL: Reset the flag immediately after triggering the request to prevent loops triggered by this effect itself
-  //     setNeedsFilesReload(false);
-  //   } else if (needsFilesReload && processingStatus.status === "processing") {
-  //     logger.debug(
-  //       `Effect: needsFilesReload is true for ${selectedFolder}, but skipping request because status is already 'processing'.`
-  //     );
-  //     // Do not reset the flag here; wait for processing to finish. The effect will run again when status changes.
-  //   } else if (hasHydrated && !selectedFolder && needsFilesReload) {
-  //     // If no folder is selected but the flag is somehow true, reset it.
-  //     logger.warn(
-  //       `Effect: No folder selected but needsFilesReload was true. Resetting flag.`
-  //     );
-  //     setNeedsFilesReload(false);
-  //   } else if (hasHydrated && selectedFolder && !needsFilesReload) {
-  //     logger.debug(
-  //       `Effect: Files should be loaded or load not needed for ${selectedFolder}. needsFilesReload is FALSE.`
-  //     );
-  //   }
-
-  //   // Clear files if no folder is selected (redundant check but safe)
-  //   // This is handled by exitFolder action setting needsFilesReload=false
-  //   // else if (hasHydrated && !selectedFolder) {
-  //   //     const currentAllFiles = useProjectStore.getState().allFiles;
-  //   //     if (currentAllFiles.length > 0) {
-  //   //         logger.debug("Effect: No folder selected, clearing allFiles.");
-  //   //         setStoreAllFilesAction([]);
-  //   //     }
-  //   //      if (needsFilesReload) { // Reset flag if needed
-  //   //          setNeedsFilesReload(false);
-  //   //      }
-  //   // }
-
-  //   if (!hasHydrated) {
-  //     logger.debug(`Render #${renderCount}: Waiting for store hydration...`);
-  //   }
-  //   // Dependencies: Monitor changes that should potentially trigger a file load check.
-  // }, [
-  //   selectedFolder,
-  //   hasHydrated,
-  //   isElectron,
-  //   needsFilesReload,
-  //   processingStatus.status,
-  //   requestFileList,
-  //   setNeedsFilesReload,
-  // ]); // Removed setStoreAllFilesAction as it's not called directly here
 
   useEffect(() => {
     // *** LOG: useEffect for Sort Dropdown Click Outside ***
