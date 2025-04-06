@@ -48,6 +48,7 @@
       "main.js",
       "preload.js",
       "excluded-files.js",
+      "constants.js",
       "node_modules/**/*"
     ],
     "mac": {

@@ -239,7 +239,7 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       toggleFileSelection: (path: string) => {
-        const state = useProjectStore.getState();
+        const state = get(); // Use get() to access state and other actions
         if (!state.currentSelectedFolder) return;
 
         const currentFolder = state.currentSelectedFolder;
@@ -261,10 +261,20 @@ export const useProjectStore = create<ProjectState>()(
 
         const newSelectedFiles = Array.from(currentSelection);
 
-        state.projects[currentFolder] = {
-          ...project,
-          selectedFiles: newSelectedFiles,
-        };
+        // --- FIX: Use the helper function to correctly update state ---
+        // This ensures Zustand detects the change and notifies subscribers.
+        logger.debug(
+          `Action: toggleFileSelection for ${path}. New selection count: ${newSelectedFiles.length}`
+        );
+        get()._updateCurrentProjectState("selectedFiles", newSelectedFiles);
+        // --- END FIX ---
+
+        // --- REMOVED direct mutation ---
+        // state.projects[currentFolder] = {
+        //   ...project,
+        //   selectedFiles: newSelectedFiles,
+        // };
+        // --- END REMOVED ---
       },
 
       toggleFolderSelection: (folderPath: string, select: boolean) => {
@@ -280,27 +290,48 @@ export const useProjectStore = create<ProjectState>()(
               !file.isBinary &&
               !file.isSkipped &&
               normalizePath(file.path).startsWith(normalizedFolderPath + "/") &&
-              normalizePath(file.path) !== normalizedFolderPath
+              normalizePath(file.path) !== normalizedFolderPath // Exclude the folder itself if it's somehow in allFiles
           )
           .map((file: FileData) => normalizePath(file.path));
+
         if (filesToToggle.length === 0) {
-          logger.debug(`No files found to toggle in folder: ${folderPath}`);
+          logger.debug(
+            `No selectable files found to toggle in folder: ${folderPath}`
+          );
           return;
         }
-        const currentSelection = [...projectState.selectedFiles];
-        const selectionSet = new Set(currentSelection);
+
+        // Get the current selection for the project
+        const currentSelectionArray = projectState.selectedFiles; // Use array from project state
+        const selectionSet = new Set(currentSelectionArray.map(normalizePath)); // Use normalization
+
         if (select) {
-          logger.debug(`Selecting files in folder: ${folderPath}`);
+          logger.debug(
+            `Selecting ${filesToToggle.length} files in folder: ${folderPath}`
+          );
           filesToToggle.forEach((p: string) => selectionSet.add(p));
         } else {
-          logger.debug(`Deselecting files in folder: ${folderPath}`);
+          logger.debug(
+            `Deselecting ${filesToToggle.length} files in folder: ${folderPath}`
+          );
           filesToToggle.forEach((p: string) => selectionSet.delete(p));
         }
+
         const newSelectionArray = Array.from(selectionSet);
+
+        // Only update if the selection actually changed
         if (
-          JSON.stringify(currentSelection) !== JSON.stringify(newSelectionArray)
+          JSON.stringify(currentSelectionArray.sort()) !==
+          JSON.stringify(newSelectionArray.sort())
         ) {
+          logger.debug(
+            `Updating selectedFiles after folder toggle for ${folderPath}. New count: ${newSelectionArray.length}`
+          );
           get()._updateCurrentProjectState("selectedFiles", newSelectionArray);
+        } else {
+          logger.debug(
+            `Folder toggle for ${folderPath} resulted in no change to selectedFiles.`
+          );
         }
       },
 
@@ -314,11 +345,20 @@ export const useProjectStore = create<ProjectState>()(
           .map((file: FileData) => normalizePath(file.path));
         const currentSelection =
           get().projects[currentFolder]?.selectedFiles || [];
+        // Sort arrays before comparison for accurate change detection
         if (
           selectableFiles.length !== currentSelection.length ||
-          !selectableFiles.every((p: string) => currentSelection.includes(p))
+          JSON.stringify(selectableFiles.sort()) !==
+            JSON.stringify(currentSelection.sort())
         ) {
+          logger.debug(
+            `Action: selectAllFiles. Selecting ${selectableFiles.length} files.`
+          );
           get()._updateCurrentProjectState("selectedFiles", selectableFiles);
+        } else {
+          logger.debug(
+            "Action: selectAllFiles skipped, all selectable files already selected."
+          );
         }
       },
 
@@ -328,17 +368,27 @@ export const useProjectStore = create<ProjectState>()(
         const currentSelection =
           get().projects[currentFolder]?.selectedFiles || [];
         if (currentSelection.length > 0) {
+          logger.debug(
+            `Action: deselectAllFiles. Deselecting ${currentSelection.length} files.`
+          );
           get()._updateCurrentProjectState("selectedFiles", []);
+        } else {
+          logger.debug(
+            "Action: deselectAllFiles skipped, no files currently selected."
+          );
         }
       },
 
       setSortOrder: (sortOrder: string) => {
+        logger.debug(`Action: setSortOrder to ${sortOrder}`);
         get()._updateCurrentProjectState("sortOrder", sortOrder);
       },
       setSearchTerm: (searchTerm: string) => {
+        logger.debug(`Action: setSearchTerm to "${searchTerm}"`);
         get()._updateCurrentProjectState("searchTerm", searchTerm);
       },
       setFileListView: (view: "structured" | "flat") => {
+        logger.debug(`Action: setFileListView to ${view}`);
         get()._updateCurrentProjectState("fileListView", view);
       },
 
@@ -357,16 +407,24 @@ export const useProjectStore = create<ProjectState>()(
           newExpanded = currentExpanded.filter(
             (p: string) => !arePathsEqual(p, normalizedPath)
           );
+          logger.debug(
+            `Action: toggleExpandedNode - Collapsing ${normalizedPath}`
+          );
         } else {
           newExpanded = [...currentExpanded, normalizedPath];
+          logger.debug(
+            `Action: toggleExpandedNode - Expanding ${normalizedPath}`
+          );
         }
         get()._updateCurrentProjectState("expandedNodes", newExpanded);
       },
 
       setIncludeFileTree: (include: boolean) => {
+        logger.debug(`Action: setIncludeFileTree to ${include}`);
         get()._updateCurrentProjectState("includeFileTree", include);
       },
       setIncludePromptOverview: (include: boolean) => {
+        logger.debug(`Action: setIncludePromptOverview to ${include}`);
         get()._updateCurrentProjectState("includePromptOverview", include);
       },
     }),

@@ -26,12 +26,13 @@ const App = () => {
     processingStatus,
     selectedFiles,
     sortOrder,
-    // searchTerm, // Provided by hook, but SearchBar is in Sidebar now
+    // searchTerm and handleSearchChange are handled within Sidebar/useAppLogic
     fileListView,
     includeFileTree,
     includePromptOverview,
-    displayedFiles,
+    sortedAllFiles, // Use the sorted list for FileList
     totalSelectedTokens,
+    selectedContentFilesCount, // Use the correct count for CopyButton
     openFolder,
     refreshFolder,
     reloadFolder,
@@ -43,8 +44,8 @@ const App = () => {
     setIncludeFileTree, // Handler for toggle in App
     setIncludePromptOverview, // Handler for toggle in App
     getSelectedFilesContent, // Function for CopyButton
-    toggleFileSelection, // Pass down to FileList
-    // handleSearchChange is NOT needed here, Sidebar handles it
+    toggleFileSelection, // Needed by FileList -> FileCard
+    // handleSearchChange is no longer passed down
   } = useAppLogic();
 
   // Local state for UI elements specific to App layout remains
@@ -58,7 +59,7 @@ const App = () => {
         sortDropdownRef.current &&
         !sortDropdownRef.current.contains(event.target as Node)
       ) {
-        setSortDropdownOpen(false);
+        setSortDropdownOpen(false); // Close if click is outside
       }
     };
     if (sortDropdownOpen) {
@@ -70,7 +71,6 @@ const App = () => {
   }, [sortDropdownOpen]);
 
   // --- Render Logic ---
-  // Log render start
   const renderCountRef = useRef(0);
   renderCountRef.current++;
   logger.debug(
@@ -90,7 +90,6 @@ const App = () => {
     );
   }
 
-  // Log return statement
   logger.debug(
     `App Render #${renderCountRef.current}: Rendering RETURN statement. Folder: ${selectedFolder}, Status: ${processingStatus.status}`
   );
@@ -113,7 +112,6 @@ const App = () => {
         {/* Welcome Screen */}
         {!selectedFolder && (
           <div className="initial-prompt">
-            {/* Log Welcome Screen render */}
             {renderCountRef.current < 3 &&
               (logger.debug("Rendering Welcome Screen (Log 1)"), null)}
             <div className="initial-prompt-content">
@@ -121,7 +119,6 @@ const App = () => {
                 <h2>PasteMax</h2>
                 <div className="initial-actions">
                   <ThemeToggle />
-                  {/* Use handler from hook */}
                   <button className="select-folder-btn" onClick={openFolder}>
                     {" "}
                     <FolderOpen size={16} /> <span>Select Folder</span>{" "}
@@ -157,7 +154,6 @@ const App = () => {
                             {folderPath}
                           </span>{" "}
                         </div>
-                        {/* Use handler from hook, needs event passed - adjusted onClick */}
                         <button
                           className="recent-folder-delete"
                           onClick={(e) => {
@@ -184,20 +180,22 @@ const App = () => {
         {/* Main Layout */}
         {selectedFolder && (
           <div className="main-content">
-            {/* Log Main Layout render */}
             {renderCountRef.current < 3 &&
               (logger.debug(
                 `Rendering Main Layout for ${selectedFolder} (Log 2)`
               ),
               null)}
-            {/* Pass simplified props to Sidebar */}
-            {/* REMINDER: Adjust SidebarProps temporarily if needed */}
+            {/* --- CORRECTED Sidebar Props (again) --- */}
+            {/* Pass only essential props defined in SidebarProps */}
             <Sidebar
               selectedFolder={selectedFolder}
               openFolder={openFolder}
               refreshFolder={refreshFolder}
               reloadFolder={reloadFolder}
+              // REMOVED: handleSearchChange
             />
+            {/* --- END CORRECTED Sidebar Props --- */}
+
             <div className="content-area">
               {/* Header */}
               <div className="content-header">
@@ -206,9 +204,10 @@ const App = () => {
                   <ThemeToggle />
                   <div className="folder-info">
                     {selectedFolder && (
-                      <div className="selected-folder">{selectedFolder}</div>
+                      <div className="selected-folder" title={selectedFolder}>
+                        {selectedFolder}
+                      </div>
                     )}
-                    {/* Use handlers from hook */}
                     <button
                       className="select-folder-btn"
                       onClick={openFolder}
@@ -246,13 +245,11 @@ const App = () => {
               <div className="content-header">
                 <div className="content-title">Selected Files</div>
                 <div className="content-actions">
-                  {/* Use state and handler from hook */}
                   <FileListToggle
                     view={fileListView}
                     onChange={handleViewChange}
                   />
                   <div className="sort-dropdown" ref={sortDropdownRef}>
-                    {/* Use state and handler from hook */}
                     <button
                       className="sort-dropdown-button"
                       onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
@@ -274,7 +271,10 @@ const App = () => {
                             className={`sort-option ${
                               sortOrder === option.value ? "active" : ""
                             }`}
-                            onClick={() => handleSortChange(option.value)}
+                            onClick={() => {
+                              handleSortChange(option.value);
+                              setSortDropdownOpen(false);
+                            }}
                             title={option.description}
                           >
                             {" "}
@@ -284,7 +284,6 @@ const App = () => {
                       </div>
                     )}
                   </div>
-                  {/* Use state from hook */}
                   <div className="file-stats">
                     {" "}
                     {selectedFiles.length} files | ~
@@ -292,18 +291,16 @@ const App = () => {
                   </div>
                 </div>
               </div>
-              {/* FileList */}
+              {/* FileList receives the sorted list of all files */}
               <FileList
-                files={displayedFiles} // Use derived state from hook
-                selectedFiles={selectedFiles} // Use state from hook
-                toggleFileSelection={toggleFileSelection} // Use action from hook
-                selectedFolder={selectedFolder} // Use state from hook
-                view={fileListView} // Use state from hook
+                files={sortedAllFiles}
+                selectedFiles={selectedFiles}
+                toggleFileSelection={toggleFileSelection}
+                selectedFolder={selectedFolder}
+                view={fileListView}
               />
               {/* Footer / Copy Area */}
               <div className="copy-button-container">
-                {/* Use state and handlers from hook */}
-                {/* Added explicit fragment <>...</> around children */}
                 <FileTreeToggle
                   checked={includePromptOverview}
                   onChange={() =>
@@ -330,13 +327,14 @@ const App = () => {
                     <span>Include File Tree</span>
                   </>
                 </FileTreeToggle>
-                {/* Use function from hook */}
                 <CopyButton
                   text={getSelectedFilesContent()}
                   className="primary full-width copy-files-btn"
+                  // Disable if no content files are selected
+                  disabled={selectedContentFilesCount === 0}
                 >
-                  {/* Children are passed correctly */}
-                  <span>COPY ({selectedFiles.length} files)</span>
+                  {/* Display the count of actual content files */}
+                  <span>COPY ({selectedContentFilesCount} files)</span>
                 </CopyButton>
               </div>
             </div>

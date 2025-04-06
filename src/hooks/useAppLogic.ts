@@ -18,9 +18,9 @@ import {
   selectNeedsFilesReload,
 } from "../store/projectStore";
 import { useIpcManager } from "./useIpcManager";
+import { FileData } from "../types/FileTypes";
 
 // --- Define default values used by selectors ---
-// Defined outside hook for stability
 const defaultProjectStateValues = getDefaultPerProjectState();
 const defaultSelectedFiles: string[] = [];
 
@@ -51,6 +51,7 @@ export const useAppLogic = () => {
       state.projects[state.currentSelectedFolder!]?.sortOrder ??
       defaultProjectStateValues.sortOrder
   );
+  // searchTerm is needed for the hook's logic, but not directly for FileList filtering anymore
   const searchTerm = useProjectStore(
     (state) =>
       state.projects[state.currentSelectedFolder!]?.searchTerm ??
@@ -89,6 +90,9 @@ export const useAppLogic = () => {
     removeRecentFolder,
     exitFolder,
     setNeedsFilesReload,
+    toggleFolderSelection,
+    selectAllFiles: selectAllFilesAction,
+    deselectAllFiles: deselectAllFilesAction,
   } = useProjectStore.getState();
 
   // --- Ref for preventing duplicate requests ---
@@ -100,23 +104,17 @@ export const useAppLogic = () => {
   const { requestFileList } = useIpcManager();
 
   // --- Derived State Calculations ---
-  const displayedFiles = useMemo(() => {
+
+  // --- MODIFIED: Calculate sorted list of ALL files (no search filter) ---
+  // Renamed from displayedFiles to sortedAllFiles for clarity
+  const sortedAllFiles = useMemo(() => {
     logger.debug(
-      `useAppLogic #${hookRenderCount.current}: Recalculating displayedFiles.`
+      `useAppLogic #${hookRenderCount.current}: Recalculating sortedAllFiles (based on allFiles and sortOrder).`
     );
-    let filtered = allFiles;
-    if (searchTerm) {
-      const lowerFilter = searchTerm.toLowerCase();
-      filtered = allFiles.filter(
-        (file) =>
-          file.name.toLowerCase().includes(lowerFilter) ||
-          getRelativePath(file.path, selectedFolder)
-            .toLowerCase()
-            .includes(lowerFilter)
-      );
-    }
+    // Apply sorting to all files
     const [sortKey, sortDir] = sortOrder.split("-");
-    const sorted = [...filtered].sort((a, b) => {
+    const sorted = [...allFiles].sort((a, b) => {
+      // Sort a copy of allFiles
       let comparison = 0;
       if (sortKey === "name") comparison = a.name.localeCompare(b.name);
       else if (sortKey === "tokens")
@@ -126,20 +124,54 @@ export const useAppLogic = () => {
         comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
       return sortDir === "asc" ? comparison : -comparison;
     });
-    return sorted;
-  }, [allFiles, sortOrder, searchTerm, selectedFolder]);
+    // --- REMOVED searchTerm filtering ---
+    /*
+    if (searchTerm) {
+      const lowerFilter = searchTerm.toLowerCase();
+      filtered = sorted.filter( // Filter the already sorted list if needed (but not here)
+        (file) =>
+          file.name.toLowerCase().includes(lowerFilter) ||
+          getRelativePath(file.path, selectedFolder)
+            .toLowerCase()
+            .includes(lowerFilter)
+      );
+       return filtered; // Return filtered if searchTerm exists
+    }
+    */
+    return sorted; // Return the sorted list of all files
+  }, [allFiles, sortOrder, selectedFolder]); // Remove searchTerm from dependencies
 
+  // Calculate total tokens for *all* selected files
   const totalSelectedTokens = useMemo(() => {
     logger.debug(
       `useAppLogic #${hookRenderCount.current}: Recalculating totalSelectedTokens.`
     );
-    const selectedFilesSet = new Set(selectedFiles.map(normalizePath));
+    const selectedPathsSet = new Set(selectedFiles.map(normalizePath));
     return allFiles.reduce((total, file) => {
-      if (selectedFilesSet.has(normalizePath(file.path))) {
+      if (selectedPathsSet.has(normalizePath(file.path))) {
         return total + (file.tokenCount || 0);
       }
       return total;
     }, 0);
+  }, [selectedFiles, allFiles]);
+
+  // Calculate the count of *content* files among the selected files
+  const selectedContentFilesCount = useMemo(() => {
+    logger.debug(
+      `useAppLogic #${hookRenderCount.current}: Recalculating selectedContentFilesCount.`
+    );
+    const selectedPathsSet = new Set(selectedFiles.map(normalizePath));
+    const count = allFiles.filter(
+      (file) =>
+        selectedPathsSet.has(normalizePath(file.path)) &&
+        !file.isBinary &&
+        !file.isSkipped &&
+        !file.descriptionForSectionId &&
+        !file.isOverviewTemplate &&
+        !file.isProjectTreeDescription
+    ).length;
+    logger.debug(`useAppLogic: Calculated selectedContentFilesCount: ${count}`);
+    return count;
   }, [selectedFiles, allFiles]);
 
   // --- Generate Content for Copying ---
@@ -147,7 +179,7 @@ export const useAppLogic = () => {
     logger.debug(
       `useAppLogic #${hookRenderCount.current}: Generating content for copying.`
     );
-
+    // Pass all necessary data to the utility function
     return generatePromptContent({
       allFiles,
       selectedFiles,
@@ -181,14 +213,14 @@ export const useAppLogic = () => {
       useProjectStore.getState().currentSelectedFolder;
     if (currentSelectedFolder) {
       logger.info(`Handler: refreshFolder called for ${currentSelectedFolder}`);
-      fileRequestSentRef.current = false; // Reset sent tracker
-      setNeedsFilesReload(true); // Explicitly signal need to reload
+      fileRequestSentRef.current = false;
+      setNeedsFilesReload(true);
       requestFileList(currentSelectedFolder, true);
     }
   }, [requestFileList, setNeedsFilesReload]);
 
   const reloadFolder = useCallback(() => {
-    logger.info(`Handler: reloadFolder called`);
+    logger.info(`Handler: reloadFolder called (alias for refreshFolder)`);
     refreshFolder();
   }, [refreshFolder]);
 
@@ -203,7 +235,7 @@ export const useAppLogic = () => {
   const handleSearchChange = useCallback(
     (newSearch: string) => {
       logger.info(`Handler: handleSearchChange called with "${newSearch}"`);
-      setSearchTerm(newSearch);
+      setSearchTerm(newSearch); // This updates the store state used by Sidebar
     },
     [setSearchTerm]
   );
@@ -262,9 +294,9 @@ export const useAppLogic = () => {
       logger.info(
         `useAppLogic Effect: Triggering requestFileList for ${selectedFolder} because needsFilesReload is TRUE.`
       );
-      fileRequestSentRef.current = true; // Mark as sent *before* request
+      fileRequestSentRef.current = true;
       requestFileList(selectedFolder, false);
-      setNeedsFilesReload(false); // Reset flag *immediately* after triggering
+      setNeedsFilesReload(false);
     } else if (needsFilesReload && fileRequestSentRef.current) {
       logger.debug(
         `useAppLogic Effect: needsFilesReload is TRUE for ${selectedFolder}, but request already sent in this cycle. Skipping.`
@@ -274,19 +306,16 @@ export const useAppLogic = () => {
         `useAppLogic Effect: needsFilesReload is TRUE for ${selectedFolder}, but skipping because status is 'processing'.`
       );
     } else if (!needsFilesReload && fileRequestSentRef.current) {
-      // If reload is no longer needed, reset the sent flag
       logger.debug(
         "useAppLogic Effect: Resetting fileRequestSentRef because needsFilesReload is false."
       );
       fileRequestSentRef.current = false;
     } else if (hasHydrated && !selectedFolder) {
-      // Ensure flags are reset if no folder is selected
       if (needsFilesReload) setNeedsFilesReload(false);
       if (fileRequestSentRef.current) fileRequestSentRef.current = false;
-      // Clear files if necessary (moved logic from previous version)
       if (allFiles.length > 0) {
         logger.debug(
-          "useAppLogic Effect: No folder selected, clearing allFiles."
+          "useAppLogic Effect: No folder selected, ensuring allFiles is cleared."
         );
         setStoreAllFilesAction([]);
       }
@@ -316,30 +345,35 @@ export const useAppLogic = () => {
     hasHydrated,
     selectedFolder,
     recentFolders,
-    allFiles, // Raw file list
+    allFiles, // Still needed for calculations
     processingStatus,
-    selectedFiles,
+    selectedFiles, // Raw selected file paths list
     sortOrder,
-    searchTerm, // Needed for SearchBar via SidebarHeader
+    searchTerm, // Needed to pass to Sidebar if Sidebar doesn't use store directly
     fileListView,
     includeFileTree,
     includePromptOverview,
     // Derived State
-    displayedFiles, // Filtered and sorted list for FileList
+    sortedAllFiles, // <-- RETURN THE SORTED LIST OF ALL FILES
     totalSelectedTokens,
+    selectedContentFilesCount,
     // Handlers/Actions for UI
     openFolder,
     refreshFolder,
     reloadFolder,
-    handleSortChange, // Pass to App for Sort Dropdown
-    handleSearchChange, // Pass to SidebarHeader for SearchBar
-    handleViewChange, // Pass to App for FileListToggle
+    handleSortChange,
+    handleSearchChange, // Pass to Sidebar
+    handleViewChange,
     selectRecentFolder,
-    removeRecentFolderHandler, // Pass the actual handler function
+    removeRecentFolderHandler,
     handleExitFolder,
-    setIncludeFileTree, // Pass to App for FileTreeToggle
-    setIncludePromptOverview, // Pass to App for FileTreeToggle
-    getSelectedFilesContent, // Pass to App for CopyButton
-    toggleFileSelection, // Pass to FileList -> FileCard
+    setIncludeFileTree,
+    setIncludePromptOverview,
+    getSelectedFilesContent,
+    toggleFileSelection, // Needed by FileList -> FileCard
+    // The following are likely handled within Sidebar/TreeItem via store:
+    // toggleFolderSelection,
+    // selectAllFiles,
+    // deselectAllFiles,
   };
 };
