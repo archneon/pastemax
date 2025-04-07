@@ -19,8 +19,8 @@ const IPC_CHANNELS = {
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 // Constants for structured prompt output
-const DESCRIPTIONS_DIR = "ai/.descriptions";
-const OVERVIEW_FILENAME = "overview.txt";
+const PASTEMAX_DIR = ".pastemax";
+const PROMPT_OVERVIEW_FILENAME = "prompt-overview";
 
 // Section definitions for main process categorization
 const PROMPT_SECTIONS = [
@@ -33,6 +33,11 @@ const PROMPT_SECTIONS = [
     id: "scraped",
     name: "SCRAPED_DOCUMENTATION",
     directory: "ai/scraped",
+  },
+  {
+    id: "docs",
+    name: "PROJECT_DOCUMENTATION",
+    directory: "ai/docs",
   },
   {
     id: "project_files",
@@ -49,8 +54,8 @@ const PROMPT_SECTIONS = [
 module.exports = {
   IPC_CHANNELS,
   MAX_FILE_SIZE,
-  DESCRIPTIONS_DIR,
-  OVERVIEW_FILENAME,
+  PASTEMAX_DIR,
+  PROMPT_OVERVIEW_FILENAME,
   PROMPT_SECTIONS,
   // Add any other constants needed only by main.js/preload.js here
 };

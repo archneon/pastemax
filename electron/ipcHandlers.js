@@ -14,8 +14,9 @@ let lastProcessedFiles = null; // Cache the last successfully processed file lis
 /**
  * Registers all IPC handlers for the main process.
  * Listens for messages from the renderer process and acts accordingly.
+ * @param {import('electron').BrowserWindow} mainWindow - The main application window instance.
  */
-function registerIpcHandlers() {
+function registerIpcHandlers(mainWindow) {
   log.debug("Registering IPC handlers...");
 
   // --- Handler for OPEN_FOLDER ---
@@ -141,6 +142,22 @@ function registerIpcHandlers() {
     log.debug("IPC Received: debug-file-selection", data);
     // Add any specific debugging logic here if required
   });
+
+  // *** New Handler for Setting the Window Title ***
+  ipcMain.on("set-window-title", (event, newTitle) => {
+    log.info(`IPC Received: set-window-title with title: "${newTitle}"`);
+    // Check if the mainWindow instance exists and hasn't been destroyed
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      // Set the window title, using a default if newTitle is empty/null
+      mainWindow.setTitle(newTitle || "PasteMax");
+      log.debug(`Window title set to: "${mainWindow.getTitle()}"`);
+    } else {
+      log.warn(
+        "Attempted to set window title, but mainWindow is not available or destroyed."
+      );
+    }
+  });
+  // *** End of New Handler ***
 
   log.info("IPC handlers registered successfully.");
 }

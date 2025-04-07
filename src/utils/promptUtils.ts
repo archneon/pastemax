@@ -67,28 +67,27 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
     return sortDir === "asc" ? comparison : -comparison;
   });
 
-  let output = "";
-  const markers = PROMPT_MARKERS;
+  // Initialize main output and track what sections are present
+  let mainOutput = "";
+  const presentSectionNames = new Set<string>();
 
-  if (includePromptOverview && overviewContent) {
-    output +=
-      "==== SYSTEM_PROMPT_OVERVIEW ====\n" +
-      String(overviewContent).trim() +
-      "\n\n";
-  }
-
+  // Generate the file tree if requested
   if (includeFileTree && selectedFolder) {
-    output +=
-      formatMarker(markers.section_open, { section_name: "PROJECT_TREE" }) +
-      "\n";
-    output += ".\n";
+    mainOutput +=
+      formatMarker(PROMPT_MARKERS.section_open, {
+        section_name: "PROJECT_TREE",
+      }) + "\n";
+    mainOutput += ".\n";
     const asciiTree = generateAsciiFileTree(sortedContentFiles, selectedFolder);
-    output += asciiTree + "\n";
-    output +=
-      formatMarker(markers.section_close, { section_name: "PROJECT_TREE" }) +
-      "\n\n";
+    mainOutput += asciiTree + "\n";
+    mainOutput +=
+      formatMarker(PROMPT_MARKERS.section_close, {
+        section_name: "PROJECT_TREE",
+      }) + "\n\n";
+    presentSectionNames.add("PROJECT_TREE");
   }
 
+  // Process files by section
   const filesBySection: Record<string, FileData[]> = {};
   sortedContentFiles.forEach((file) => {
     const sectionId =
@@ -97,25 +96,82 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
     filesBySection[sectionId].push(file);
   });
 
+  // Add sections to the output
   for (const section of PROMPT_SECTIONS) {
     const sectionFiles = filesBySection[section.id];
     if (!sectionFiles || sectionFiles.length === 0) continue;
-    output +=
-      formatMarker(markers.section_open, { section_name: section.name }) +
-      "\n\n";
 
+    // Mark this section as present
+    presentSectionNames.add(section.name);
+
+    // Add section start marker
+    mainOutput +=
+      formatMarker(PROMPT_MARKERS.section_open, {
+        section_name: section.name,
+      }) + "\n\n";
+
+    // Add files in this section
     sectionFiles.forEach((file) => {
       const relativePath = getRelativePath(file.path, selectedFolder);
-      output +=
-        formatMarker(markers.file_open, { file_path: relativePath }) + "\n";
-      output += file.content || "";
-      if (file.content && !file.content.endsWith("\n")) output += "\n";
-      output +=
-        formatMarker(markers.file_close, { file_path: relativePath }) + "\n\n";
+      mainOutput +=
+        formatMarker(PROMPT_MARKERS.file_open, { file_path: relativePath }) +
+        "\n";
+      mainOutput += file.content || "";
+      if (file.content && !file.content.endsWith("\n")) mainOutput += "\n";
+      mainOutput +=
+        formatMarker(PROMPT_MARKERS.file_close, { file_path: relativePath }) +
+        "\n\n";
     });
-    output +=
-      formatMarker(markers.section_close, { section_name: section.name }) +
-      "\n\n";
+
+    // Add section end marker
+    mainOutput +=
+      formatMarker(PROMPT_MARKERS.section_close, {
+        section_name: section.name,
+      }) + "\n\n";
   }
-  return output.trim();
+
+  // Generate dynamic explanations for structure
+  let dynamicExplanations = "";
+
+  // Explain file tree if present
+  if (presentSectionNames.has("PROJECT_TREE")) {
+    dynamicExplanations +=
+      "- PROJECT_TREE: Shows the directory structure of included files.\n";
+  }
+
+  // Explain present sections
+  for (const section of PROMPT_SECTIONS) {
+    if (presentSectionNames.has(section.name)) {
+      dynamicExplanations += `- ${section.name}: Contains files from the ${
+        section.directory || "project"
+      } directory.\n`;
+    }
+  }
+
+  // Add header to explanations if not empty
+  if (dynamicExplanations) {
+    dynamicExplanations = "\n\nStructure Explanation:\n" + dynamicExplanations;
+  }
+
+  // Construct the overview block
+  let overviewBlock = "";
+  if (includePromptOverview && overviewContent) {
+    overviewBlock += "%%%%_PROMPT_OVERVIEW_START\n";
+    overviewBlock += String(overviewContent).trim();
+
+    // Add the dynamic explanations if present
+    if (dynamicExplanations) {
+      overviewBlock += dynamicExplanations;
+    }
+
+    overviewBlock += "\n%%%%_PROMPT_OVERVIEW_END\n\n";
+  }
+
+  // Combine everything
+  const finalOutput = overviewBlock + mainOutput.trim();
+
+  return (
+    finalOutput ||
+    "No content to copy. Please select files or enable file tree/overview."
+  );
 };

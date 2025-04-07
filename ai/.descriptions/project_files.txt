@@ -1,2 +1,0 @@
-This section contains the project's source code.
-Here are included all files that are not categorized into special categories such as rules, documentation, or instructions. 

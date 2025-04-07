@@ -1,5 +1,5 @@
 // main.js - Main entry point for the Electron application
-const { app } = require("electron");
+const { app, BrowserWindow } = require("electron");
 const path = require("path"); // Needed for app.getPath
 
 // Import modules for specific functionalities
@@ -46,7 +46,7 @@ app
     const mainWindow = createWindow(isDev); // Pass isDev flag
 
     // Register IPC handlers to listen for messages from the renderer
-    registerIpcHandlers();
+    registerIpcHandlers(mainWindow);
 
     // Optional: Set up application menu (if needed)
     // Menu.setApplicationMenu(null); // Example: Remove default menu

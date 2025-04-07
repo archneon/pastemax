@@ -41,22 +41,20 @@ export const SORT_ORDERS = {
 } as const;
 export type SortOrderValue = (typeof SORT_ORDERS)[keyof typeof SORT_ORDERS];
 
-// --- NEW/UPDATED Constants for Structured Prompt ---
+// --- UPDATED Constants for Structured Prompt ---
 
-// Central directory for all description files and the overview template
-export const DESCRIPTIONS_DIR = "ai/.descriptions";
+// Directory for PasteMax configuration
+export const PASTEMAX_DIR = ".pastemax";
 
-// Filename for the overview template within DESCRIPTIONS_DIR
-export const OVERVIEW_FILENAME = "overview.txt";
+// Filename for the prompt overview
+export const PROMPT_OVERVIEW_FILENAME = "prompt-overview";
 
-// Markers (with placeholders)
+// Updated markers with connected underscore style
 export const PROMPT_MARKERS = {
-  section_open: "@@@@ {section_name}_START",
-  section_close: "@@@@ {section_name}_END",
-  description_open: "%%%% DESCRIPTION_START",
-  description_close: "%%%% DESCRIPTION_END",
-  file_open: ">>>> FILE_START: {file_path}",
-  file_close: ">>>> FILE_END: {file_path}",
+  section_open: "@@@@_{section_name}_START",
+  section_close: "@@@@_{section_name}_END",
+  file_open: ">>>>_FILE_START: {file_path}",
+  file_close: ">>>>_FILE_END: {file_path}",
 };
 
 // Section Definitions - ORDER MATTERS for output and structured UI!
@@ -74,6 +72,13 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     label: "Scraped Docs",
     directory: "ai/scraped",
     color: "var(--success-color)",
+  },
+  {
+    id: "docs",
+    name: "PROJECT_DOCUMENTATION",
+    label: "Project Docs",
+    directory: "ai/docs",
+    color: "var(--accent-purple)",
   },
   {
     id: "project_files", // Default section

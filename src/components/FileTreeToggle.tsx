@@ -3,6 +3,7 @@ import React from "react";
 interface FileTreeToggleProps {
   checked: boolean;
   onChange: () => void;
+  disabled?: boolean;
   title?: string;
   children?: JSX.Element | JSX.Element[] | string;
 }
@@ -10,6 +11,7 @@ interface FileTreeToggleProps {
 const FileTreeToggle = ({
   checked,
   onChange,
+  disabled = false,
   title,
   children,
 }: FileTreeToggleProps): JSX.Element => {
@@ -18,6 +20,7 @@ const FileTreeToggle = ({
       className="file-tree-toggle"
       onClick={onChange}
       type="button"
+      disabled={disabled}
       title={
         title ||
         (checked
@@ -29,6 +32,7 @@ const FileTreeToggle = ({
         type="checkbox"
         checked={checked}
         onChange={onChange}
+        disabled={disabled}
         className="file-tree-toggle-input"
       />
       {children || <span>Include File Tree</span>}

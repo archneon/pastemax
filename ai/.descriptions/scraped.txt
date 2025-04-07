@@ -1,2 +1,0 @@
-This section contains general project documentation.
-Here you will find explanations about key components, APIs, and functionalities. 

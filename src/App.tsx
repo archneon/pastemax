@@ -33,6 +33,7 @@ const App = () => {
     sortedAllFiles, // Use the sorted list for FileList
     totalSelectedTokens,
     selectedContentFilesCount, // Use the correct count for CopyButton
+    hasOverviewFile,
     openFolder,
     refreshFolder,
     reloadFolder,
@@ -306,8 +307,11 @@ const App = () => {
                   onChange={() =>
                     setIncludePromptOverview(!includePromptOverview)
                   }
+                  disabled={!hasOverviewFile}
                   title={
-                    includePromptOverview
+                    !hasOverviewFile
+                      ? "Overview file (.pastemax/prompt-overview) not found or empty"
+                      : includePromptOverview
                       ? "Exclude prompt overview"
                       : "Include prompt overview"
                   }

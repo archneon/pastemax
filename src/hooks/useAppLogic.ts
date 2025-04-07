@@ -15,7 +15,7 @@ import {
   selectProcessingStatus,
   selectHasHydrated,
   getDefaultPerProjectState,
-  selectNeedsFilesReload,
+  selectNeedsFilesReload, // Ensure this is imported
 } from "../store/projectStore";
 import { useIpcManager } from "./useIpcManager";
 import { FileData } from "../types/FileTypes";
@@ -39,7 +39,7 @@ export const useAppLogic = () => {
   const recentFolders = useProjectStore(selectRecentFolders);
   const allFiles = useProjectStore(selectStoreAllFilesHook);
   const processingStatus = useProjectStore(selectProcessingStatus);
-  const needsFilesReload = useProjectStore(selectNeedsFilesReload);
+  const needsFilesReload = useProjectStore(selectNeedsFilesReload); // Already getting this
 
   const selectedFiles = useProjectStore(
     (state) =>
@@ -51,7 +51,6 @@ export const useAppLogic = () => {
       state.projects[state.currentSelectedFolder!]?.sortOrder ??
       defaultProjectStateValues.sortOrder
   );
-  // searchTerm is needed for the hook's logic, but not directly for FileList filtering anymore
   const searchTerm = useProjectStore(
     (state) =>
       state.projects[state.currentSelectedFolder!]?.searchTerm ??
@@ -89,14 +88,14 @@ export const useAppLogic = () => {
     setIncludePromptOverview,
     removeRecentFolder,
     exitFolder,
-    setNeedsFilesReload,
+    setNeedsFilesReload, // Action to clear the flag
     toggleFolderSelection,
     selectAllFiles: selectAllFilesAction,
     deselectAllFiles: deselectAllFilesAction,
   } = useProjectStore.getState();
 
   // --- Ref for preventing duplicate requests ---
-  const fileRequestSentRef = useRef<boolean>(false);
+  const fileRequestSentRef = useRef<boolean>(false); // Ref to prevent multiple requests per cycle
 
   const isElectron = window.electron !== undefined;
 
@@ -105,8 +104,6 @@ export const useAppLogic = () => {
 
   // --- Derived State Calculations ---
 
-  // --- MODIFIED: Calculate sorted list of ALL files (no search filter) ---
-  // Renamed from displayedFiles to sortedAllFiles for clarity
   const sortedAllFiles = useMemo(() => {
     logger.debug(
       `useAppLogic #${hookRenderCount.current}: Recalculating sortedAllFiles (based on allFiles and sortOrder).`
@@ -124,24 +121,9 @@ export const useAppLogic = () => {
         comparison = comparePathsStructurally(a.path, b.path, selectedFolder);
       return sortDir === "asc" ? comparison : -comparison;
     });
-    // --- REMOVED searchTerm filtering ---
-    /*
-    if (searchTerm) {
-      const lowerFilter = searchTerm.toLowerCase();
-      filtered = sorted.filter( // Filter the already sorted list if needed (but not here)
-        (file) =>
-          file.name.toLowerCase().includes(lowerFilter) ||
-          getRelativePath(file.path, selectedFolder)
-            .toLowerCase()
-            .includes(lowerFilter)
-      );
-       return filtered; // Return filtered if searchTerm exists
-    }
-    */
     return sorted; // Return the sorted list of all files
-  }, [allFiles, sortOrder, selectedFolder]); // Remove searchTerm from dependencies
+  }, [allFiles, sortOrder, selectedFolder]);
 
-  // Calculate total tokens for *all* selected files
   const totalSelectedTokens = useMemo(() => {
     logger.debug(
       `useAppLogic #${hookRenderCount.current}: Recalculating totalSelectedTokens.`
@@ -155,7 +137,6 @@ export const useAppLogic = () => {
     }, 0);
   }, [selectedFiles, allFiles]);
 
-  // Calculate the count of *content* files among the selected files
   const selectedContentFilesCount = useMemo(() => {
     logger.debug(
       `useAppLogic #${hookRenderCount.current}: Recalculating selectedContentFilesCount.`
@@ -171,6 +152,19 @@ export const useAppLogic = () => {
     logger.debug(`useAppLogic: Calculated selectedContentFilesCount: ${count}`);
     return count;
   }, [selectedFiles, allFiles]);
+
+  const hasOverviewFile = useMemo(() => {
+    const overviewFile = allFiles.find((file) => file.fileKind === "overview");
+    const existsAndNotEmpty = !!(
+      overviewFile &&
+      overviewFile.content &&
+      overviewFile.content.trim().length > 0
+    );
+    logger.debug(
+      `useAppLogic: Calculated hasOverviewFile: ${existsAndNotEmpty}`
+    );
+    return existsAndNotEmpty;
+  }, [allFiles]);
 
   // --- Generate Content for Copying ---
   const getSelectedFilesContent = useCallback(() => {
@@ -199,7 +193,7 @@ export const useAppLogic = () => {
   const openFolder = useCallback(() => {
     if (isElectron) {
       logger.info("Handler: openFolder");
-      fileRequestSentRef.current = false;
+      fileRequestSentRef.current = false; // Reset ref on new folder open attempt
       window.electron.ipcRenderer.send("open-folder");
     } else {
       logger.warn("Folder selection not available in browser");
@@ -210,12 +204,14 @@ export const useAppLogic = () => {
     const currentSelectedFolder =
       useProjectStore.getState().currentSelectedFolder;
     if (currentSelectedFolder) {
-      logger.info(`Handler: refreshFolder called for ${currentSelectedFolder}`);
-      fileRequestSentRef.current = false;
-      setNeedsFilesReload(true);
-      requestFileList(currentSelectedFolder, true);
+      logger.info(
+        `Handler: refreshFolder called for ${currentSelectedFolder} (forcing refresh)`
+      );
+      fileRequestSentRef.current = false; // Allow immediate request
+      // No need to setNeedsFilesReload here, requestFileList will handle status
+      requestFileList(currentSelectedFolder, true); // Force refresh
     }
-  }, [requestFileList, setNeedsFilesReload]);
+  }, [requestFileList /* remove setNeedsFilesReload dependency */]);
 
   const reloadFolder = useCallback(() => {
     logger.info(`Handler: reloadFolder called (alias for refreshFolder)`);
@@ -233,7 +229,7 @@ export const useAppLogic = () => {
   const handleSearchChange = useCallback(
     (newSearch: string) => {
       logger.info(`Handler: handleSearchChange called with "${newSearch}"`);
-      setSearchTerm(newSearch); // This updates the store state used by Sidebar
+      setSearchTerm(newSearch);
     },
     [setSearchTerm]
   );
@@ -249,9 +245,9 @@ export const useAppLogic = () => {
   const selectRecentFolder = useCallback(
     (folderPath: string) => {
       if (!isElectron) return;
-      fileRequestSentRef.current = false;
+      fileRequestSentRef.current = false; // Reset ref when selecting a recent folder
       logger.info(`Handler: selectRecentFolder called with ${folderPath}`);
-      setCurrentSelectedFolder(folderPath);
+      setCurrentSelectedFolder(folderPath); // This will trigger the needsFilesReload flag in the store
     },
     [isElectron, setCurrentSelectedFolder]
   );
@@ -268,52 +264,80 @@ export const useAppLogic = () => {
 
   const handleExitFolder = useCallback(() => {
     logger.info(`Handler: handleExitFolder called`);
-    fileRequestSentRef.current = false;
+    fileRequestSentRef.current = false; // Reset ref on exit
     exitFolder();
   }, [exitFolder]);
 
   // --- Effects ---
   useEffect(() => {
     // File Load Trigger based on needsFilesReload flag
+    const effectId = Math.random().toString(36).substring(2, 8); // For unique logging
     logger.debug(
-      `useAppLogic #${hookRenderCount.current}: Running useEffect for file load trigger check. ` +
+      `useAppLogic #${hookRenderCount.current} Effect [${effectId}]: Running file load trigger check. ` +
         `Hydrated: ${hasHydrated}, Electron: ${isElectron}, Folder: ${selectedFolder}, ` +
-        `NeedsReload: ${needsFilesReload}, Status: ${processingStatus.status}, Sent: ${fileRequestSentRef.current}`
+        `NeedsReload: ${needsFilesReload}, Status: ${processingStatus.status}, SentRef: ${fileRequestSentRef.current}`
     );
 
     if (
       hasHydrated &&
       isElectron &&
       selectedFolder &&
-      needsFilesReload &&
-      !fileRequestSentRef.current &&
-      processingStatus.status !== "processing"
+      needsFilesReload && // Check if the reload flag is set
+      !fileRequestSentRef.current && // Ensure a request wasn't just sent
+      processingStatus.status !== "processing" // Ensure we aren't already processing
     ) {
       logger.info(
-        `useAppLogic Effect: Triggering requestFileList for ${selectedFolder} because needsFilesReload is TRUE.`
+        `useAppLogic Effect [${effectId}]: Triggering requestFileList for ${selectedFolder} because needsFilesReload is TRUE. **Forcing refresh.**` // Log forceRefresh
       );
-      fileRequestSentRef.current = true;
-      requestFileList(selectedFolder, false);
+      fileRequestSentRef.current = true; // Mark as sent for this cycle
+
+      // ====================================================================
+      // *** THE FIX: Pass 'true' for forceRefresh parameter ***
+      // ====================================================================
+      requestFileList(selectedFolder, true);
+      // ====================================================================
+
+      // Clear the flag *after* initiating the request
       setNeedsFilesReload(false);
+      logger.debug(
+        `useAppLogic Effect [${effectId}]: Cleared needsFilesReload flag after requesting forced refresh.`
+      );
     } else if (needsFilesReload && fileRequestSentRef.current) {
       logger.debug(
-        `useAppLogic Effect: needsFilesReload is TRUE for ${selectedFolder}, but request already sent in this cycle. Skipping.`
+        `useAppLogic Effect [${effectId}]: needsFilesReload is TRUE for ${selectedFolder}, but request already sent in this cycle. Skipping.`
       );
+      // Do not clear the flag here; let the successful load handle it or subsequent checks.
     } else if (needsFilesReload && processingStatus.status === "processing") {
       logger.debug(
-        `useAppLogic Effect: needsFilesReload is TRUE for ${selectedFolder}, but skipping because status is 'processing'.`
+        `useAppLogic Effect [${effectId}]: needsFilesReload is TRUE for ${selectedFolder}, but skipping because status is 'processing'.`
       );
     } else if (!needsFilesReload && fileRequestSentRef.current) {
+      // Reset the ref if the need for reload is gone (e.g., user exited folder)
+      // AND a request *was* sent previously in the logic flow.
+      // This allows a new request if the user re-selects the folder quickly.
       logger.debug(
-        "useAppLogic Effect: Resetting fileRequestSentRef because needsFilesReload is false."
+        `useAppLogic Effect [${effectId}]: Resetting fileRequestSentRef because needsFilesReload is false.`
       );
       fileRequestSentRef.current = false;
     } else if (hasHydrated && !selectedFolder) {
-      if (needsFilesReload) setNeedsFilesReload(false);
-      if (fileRequestSentRef.current) fileRequestSentRef.current = false;
+      // Cleanup if no folder is selected after hydration
+      if (needsFilesReload) {
+        logger.debug(
+          `useAppLogic Effect [${effectId}]: No folder selected, clearing needsFilesReload flag.`
+        );
+        setNeedsFilesReload(false);
+      }
+      if (fileRequestSentRef.current) {
+        logger.debug(
+          `useAppLogic Effect [${effectId}]: No folder selected, resetting fileRequestSentRef.`
+        );
+        fileRequestSentRef.current = false;
+      }
+      // Clearing allFiles might be redundant if setCurrentSelectedFolder already does it,
+      // but it's safe to keep for explicit state management.
       if (allFiles.length > 0) {
         logger.debug(
-          "useAppLogic Effect: No folder selected, ensuring allFiles is cleared."
+          `useAppLogic Effect [${effectId}]: No folder selected, ensuring allFiles is cleared.`
         );
         setStoreAllFilesAction([]);
       }
@@ -321,9 +345,18 @@ export const useAppLogic = () => {
 
     if (!hasHydrated) {
       logger.debug(
-        `useAppLogic #${hookRenderCount.current}: Waiting for store hydration...`
+        `useAppLogic #${hookRenderCount.current} Effect [${effectId}]: Waiting for store hydration...`
       );
     }
+    // --- Dependencies ---
+    // The core dependencies trigger the check when needed:
+    // - selectedFolder: Changes when a new folder is picked.
+    // - hasHydrated: Changes once when the store loads.
+    // - isElectron: Should be constant, but harmless.
+    // - needsFilesReload: Changes when hydration or refresh sets the flag.
+    // - processingStatus.status: Changes during file loading.
+    // Actions/functions (requestFileList, setNeedsFilesReload, setStoreAllFilesAction) are stable references from Zustand/useCallback.
+    // allFiles.length is included to ensure the cleanup logic runs if files exist when folder becomes null.
   }, [
     selectedFolder,
     hasHydrated,
@@ -336,6 +369,23 @@ export const useAppLogic = () => {
     setStoreAllFilesAction,
   ]);
 
+  // *** New Effect for Updating Window Title ***
+  useEffect(() => {
+    // Check if running in Electron, IPC is available, and store is hydrated
+    if (isElectron && window.electron?.ipcRenderer && hasHydrated) {
+      let newTitle = "PasteMax"; // Default title
+      if (selectedFolder) {
+        // Use the full path for the title as requested
+        newTitle = `${selectedFolder} - PasteMax`;
+      }
+
+      // Send the IPC message to the main process to update the title
+      window.electron.ipcRenderer.send("set-window-title", newTitle);
+      logger.debug(`Sent IPC set-window-title with: "${newTitle}"`);
+    }
+    // Dependencies: Trigger when folder changes, electron is confirmed, and hydration is complete
+  }, [selectedFolder, isElectron, hasHydrated]);
+
   // --- Return Values ---
   logger.debug(`useAppLogic #${hookRenderCount.current}: Returning values.`);
   return {
@@ -343,18 +393,19 @@ export const useAppLogic = () => {
     hasHydrated,
     selectedFolder,
     recentFolders,
-    allFiles, // Still needed for calculations
+    allFiles, // Raw data for calculations/context
     processingStatus,
     selectedFiles, // Raw selected file paths list
     sortOrder,
-    searchTerm, // Needed to pass to Sidebar if Sidebar doesn't use store directly
+    searchTerm, // Pass to Sidebar or components needing it
     fileListView,
     includeFileTree,
     includePromptOverview,
     // Derived State
-    sortedAllFiles, // <-- RETURN THE SORTED LIST OF ALL FILES
+    sortedAllFiles, // Pass this sorted list to FileList
     totalSelectedTokens,
     selectedContentFilesCount,
+    hasOverviewFile,
     // Handlers/Actions for UI
     openFolder,
     refreshFolder,
@@ -368,10 +419,12 @@ export const useAppLogic = () => {
     setIncludeFileTree,
     setIncludePromptOverview,
     getSelectedFilesContent,
-    toggleFileSelection, // Needed by FileList -> FileCard
-    // The following are likely handled within Sidebar/TreeItem via store:
-    // toggleFolderSelection,
-    // selectAllFiles,
-    // deselectAllFiles,
+    toggleFileSelection, // Needed by FileList -> FileCard & potentially TreeItem
+    // toggleFolderSelection, // Needed by TreeItem
+    // selectAllFilesAction, // Needed by Sidebar
+    // deselectAllFilesAction, // Needed by Sidebar
+    // NOTE: Actions like toggleFolderSelection, selectAllFiles, deselectAllFiles
+    // are accessed directly via useProjectStore.getState() in components like
+    // Sidebar and TreeItem, so they don't necessarily need to be returned here.
   };
 };

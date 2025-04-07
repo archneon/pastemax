@@ -161,10 +161,14 @@ const TreeItem = ({ node }: TreeItemProps) => {
       // Use React.ChangeEvent
       e.stopPropagation();
       const isChecked = e.target.checked;
-      if (type === "file" && !isDisabled) {
-        toggleFileSelection(path); // Action handles the logic
-      } else if (type === "directory") {
-        toggleFolderSelection(path, isChecked);
+
+      // Only toggle if element is not disabled
+      if (!isDisabled) {
+        if (type === "file") {
+          toggleFileSelection(path); // Action handles the logic
+        } else if (type === "directory") {
+          toggleFolderSelection(path, isChecked);
+        }
       }
     },
     [type, path, isDisabled, toggleFileSelection, toggleFolderSelection]

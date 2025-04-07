@@ -8,8 +8,8 @@ const ignore = require("ignore");
 const { countTokens } = require("./tokenUtils");
 const {
   MAX_FILE_SIZE,
-  DESCRIPTIONS_DIR,
-  OVERVIEW_FILENAME,
+  PASTEMAX_DIR,
+  PROMPT_OVERVIEW_FILENAME,
   PROMPT_SECTIONS,
 } = require("../constants"); // Goes up one level
 const {
@@ -159,15 +159,14 @@ function readFilesRecursively(dir, rootDir, ignoreFilter, eventSender) {
           // Identify Special Files & Assign sectionId
           const parentDirRelative = normalizePath(path.dirname(relativePath));
 
-          if (parentDirRelative === DESCRIPTIONS_DIR) {
+          if (parentDirRelative === PASTEMAX_DIR) {
             // Special file logic
-            if (dirent.name === OVERVIEW_FILENAME) {
+            if (dirent.name === PROMPT_OVERVIEW_FILENAME) {
               fileData.fileKind = "overview";
             } else {
-              fileData.fileKind = "regular";
               fileData.isSkipped = true;
               fileData.error =
-                "Only overview.txt is supported in descriptions directory";
+                "Only prompt-overview is allowed in .pastemax directory";
             }
           } else {
             // Assign sectionId for REGULAR files

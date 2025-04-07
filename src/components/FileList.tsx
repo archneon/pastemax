@@ -21,7 +21,7 @@ const FileList = ({
   // Filter for files to *display* in the list (selected, not binary/skipped, only regular files)
   const displayableFiles = files.filter(
     (file) =>
-      selectedPathsSet.has(file.path) && // Already normalized? Ensure consistency
+      selectedPathsSet.has(normalizePath(file.path)) && // Use normalizePath for consistency
       !file.isBinary &&
       !file.isSkipped &&
       file.fileKind === "regular"

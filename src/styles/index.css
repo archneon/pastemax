@@ -12,6 +12,7 @@
   --success-color: #2ecc71;
   --warning-color: #f39c12;
   --error-color: #e74c3c;
+  --accent-purple: #9b59b6;
   --primary-button-background: #000000;
   --primary-button-text: #ffffff;
 }
@@ -30,6 +31,7 @@
   --success-color: #2ecc71;
   --warning-color: #f39c12;
   --error-color: #e74c3c;
+  --accent-purple: #bb86fc;
   --primary-button-background: #0e639c;
   --primary-button-text: #ffffff;
 }
