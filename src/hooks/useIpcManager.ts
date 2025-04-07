@@ -49,8 +49,29 @@ export const useIpcManager = () => {
 
       const categorizedFiles = filesArray.map((file) => ({
         ...file,
-        sectionId: categorizeFile(file, currentSelectedFolder, PROMPT_SECTIONS),
+        // Trust the sectionId from the backend FIRST
+        sectionId:
+          file.sectionId ||
+          categorizeFile(file, currentSelectedFolder, PROMPT_SECTIONS),
       }));
+
+      // DEBUG LOGGING START
+      logger.debug(
+        "[IPC Manager] Received files count:",
+        categorizedFiles.length
+      );
+      const overviewFileReceived = categorizedFiles.find(
+        (f) => f.fileKind === "overview"
+      );
+      if (overviewFileReceived) {
+        logger.debug(
+          "[IPC Manager] Overview file data received:",
+          JSON.stringify(overviewFileReceived, null, 2)
+        );
+      } else {
+        logger.warn("[IPC Manager] Overview file not found in received data.");
+      }
+      // DEBUG LOGGING END
 
       logger.info(
         `IPC: Setting ${categorizedFiles.length} categorized files in store.`

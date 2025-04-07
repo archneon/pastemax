@@ -34,13 +34,17 @@ export const categorizeFile = (
 ): string => {
   const defaultSection = sections.find((s) => s.directory === null);
   const defaultSectionId = defaultSection?.id || "project_files";
-  if (!currentSelectedFolder || file.fileKind !== "regular") {
+
+  if (!currentSelectedFolder) {
     return defaultSectionId;
   }
+
   const relativePath = getRelativePath(file.path, currentSelectedFolder);
   if (!relativePath) {
     return defaultSectionId;
   }
+
+  // Za vse datoteke preverimo sekcije
   for (const section of sections) {
     if (
       section.directory &&
@@ -50,5 +54,6 @@ export const categorizeFile = (
       return section.id;
     }
   }
+
   return defaultSectionId;
 };

@@ -7,7 +7,12 @@ import {
   comparePathsStructurally,
 } from "./pathUtils";
 import logger from "./logger";
-import { PROMPT_SECTIONS, PROMPT_MARKERS } from "../constants";
+import {
+  PROMPT_SECTIONS,
+  PROMPT_MARKERS,
+  PASTEMAX_DIR,
+  PROMPT_OVERVIEW_FILENAME,
+} from "../constants";
 
 // Define the structure for the input state needed by the generator
 interface PromptDataArgs {
@@ -43,12 +48,18 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
     (file: FileData) =>
       selectedPathSet.has(normalizePath(file.path)) &&
       !file.isBinary &&
-      !file.isSkipped &&
-      file.fileKind === "regular"
+      !file.isSkipped
   );
 
-  // Find the overview file
-  const overviewFile = allFiles.find((file) => file.fileKind === "overview");
+  // Find the overview file by path
+  const overviewExpectedPath = selectedFolder
+    ? normalizePath(
+        `${selectedFolder}/${PASTEMAX_DIR}/${PROMPT_OVERVIEW_FILENAME}`
+      )
+    : null;
+  const overviewFile = overviewExpectedPath
+    ? allFiles.find((file) => normalizePath(file.path) === overviewExpectedPath)
+    : null;
   const overviewContent = overviewFile ? overviewFile.content : null;
 
   if (contentFiles.length === 0 && !includeFileTree && !includePromptOverview) {
@@ -155,7 +166,7 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
 
   // Construct the overview block
   let overviewBlock = "";
-  if (includePromptOverview && overviewContent) {
+  if (includePromptOverview && overviewFile && overviewContent) {
     overviewBlock += "%%%%_PROMPT_OVERVIEW_START\n";
     overviewBlock += String(overviewContent).trim();
 

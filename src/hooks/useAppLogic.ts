@@ -19,6 +19,7 @@ import {
 } from "../store/projectStore";
 import { useIpcManager } from "./useIpcManager";
 import { FileData } from "../types/FileTypes";
+import { PASTEMAX_DIR, PROMPT_OVERVIEW_FILENAME } from "../constants";
 
 // --- Define default values used by selectors ---
 const defaultProjectStateValues = getDefaultPerProjectState();
@@ -146,15 +147,26 @@ export const useAppLogic = () => {
       (file) =>
         selectedPathsSet.has(normalizePath(file.path)) &&
         !file.isBinary &&
-        !file.isSkipped &&
-        file.fileKind === "regular"
+        !file.isSkipped
     ).length;
     logger.debug(`useAppLogic: Calculated selectedContentFilesCount: ${count}`);
     return count;
   }, [selectedFiles, allFiles]);
 
   const hasOverviewFile = useMemo(() => {
-    const overviewFile = allFiles.find((file) => file.fileKind === "overview");
+    // Find by path now
+    const overviewExpectedPath = selectedFolder
+      ? normalizePath(
+          `${selectedFolder}/${PASTEMAX_DIR}/${PROMPT_OVERVIEW_FILENAME}`
+        )
+      : null;
+    const overviewFile = overviewExpectedPath
+      ? allFiles.find(
+          (file) => normalizePath(file.path) === overviewExpectedPath
+        )
+      : null;
+
+    // The rest of the logic remains the same
     const existsAndNotEmpty = !!(
       overviewFile &&
       overviewFile.content &&
@@ -164,7 +176,7 @@ export const useAppLogic = () => {
       `useAppLogic: Calculated hasOverviewFile: ${existsAndNotEmpty}`
     );
     return existsAndNotEmpty;
-  }, [allFiles]);
+  }, [allFiles, selectedFolder]); // Add selectedFolder to dependencies
 
   // --- Generate Content for Copying ---
   const getSelectedFilesContent = useCallback(() => {

@@ -23,8 +23,7 @@ const FileList = ({
     (file) =>
       selectedPathsSet.has(normalizePath(file.path)) && // Use normalizePath for consistency
       !file.isBinary &&
-      !file.isSkipped &&
-      file.fileKind === "regular"
+      !file.isSkipped
   );
 
   // Grouping logic for structured view
@@ -34,9 +33,19 @@ const FileList = ({
       PROMPT_SECTIONS.find((s) => s.directory === null)?.id || "project_files";
     displayableFiles.forEach((file) => {
       const sectionId = file.sectionId || defaultSectionId;
+
+      // DEBUG LOGGING START
+      if (file.fileKind === "overview") {
+        console.log(`[FileList Grouping] Processing overview file:`, file);
+        console.log(`[FileList Grouping] Using sectionId: ${sectionId}`);
+      }
+      // DEBUG LOGGING END
+
       if (!filesBySection[sectionId]) filesBySection[sectionId] = [];
       filesBySection[sectionId].push(file);
     });
+    // Optional: Log the final grouped object AFTER the loop
+    console.log("[FileList Grouping] Final filesBySection:", filesBySection);
   }
 
   // Helper to find section config for a file

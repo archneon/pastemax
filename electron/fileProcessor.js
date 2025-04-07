@@ -127,7 +127,7 @@ function readFilesRecursively(dir, rootDir, ignoreFilter, eventSender) {
           isBinary: false,
           isSkipped: false,
           error: null,
-          fileKind: "regular",
+          fileKind: null,
           sectionId: null,
         };
 
@@ -160,19 +160,29 @@ function readFilesRecursively(dir, rootDir, ignoreFilter, eventSender) {
           const parentDirRelative = normalizePath(path.dirname(relativePath));
 
           if (parentDirRelative === PASTEMAX_DIR) {
-            // Special file logic
+            // No special sectionId assignment here anymore
             if (dirent.name === PROMPT_OVERVIEW_FILENAME) {
-              fileData.fileKind = "overview";
+              fileData.fileKind = "regular"; // Keep as regular file
+              // Allow sectionId to be determined by the fallback logic below
             } else {
               fileData.isSkipped = true;
               fileData.error =
-                "Only prompt-overview is allowed in .pastemax directory";
+                "Only prompt-overview is currently processed in .pastemax directory";
+              fileData.fileKind = "regular"; // Keep regular
             }
-          } else {
-            // Assign sectionId for REGULAR files
+            // No sectionId assignment here for prompt-overview
+          }
+
+          // Always assign fileKind and sectionId AFTER the PASTEMAX_DIR check (if not already assigned)
+          if (fileData.fileKind === null) {
             fileData.fileKind = "regular";
+          }
+
+          // Assign sectionId if not already assigned
+          if (fileData.sectionId === null) {
             let assignedSection = false;
             for (const section of PROMPT_SECTIONS) {
+              // Check section.directory before using startsWith
               if (
                 section.directory &&
                 relativePath.startsWith(section.directory + "/")
@@ -183,6 +193,7 @@ function readFilesRecursively(dir, rootDir, ignoreFilter, eventSender) {
               }
             }
             if (!assignedSection) {
+              // Find the default section (directory: null)
               const defaultSection = PROMPT_SECTIONS.find(
                 (s) => s.directory === null
               );
@@ -196,6 +207,15 @@ function readFilesRecursively(dir, rootDir, ignoreFilter, eventSender) {
           fileData.isSkipped = true;
           fileData.error = `Could not process file: ${err.message}`;
         }
+
+        // DEBUG LOGGING START
+        if (fileData.path.includes(PROMPT_OVERVIEW_FILENAME)) {
+          log.debug(
+            `[FileProcessor] Data for ${PROMPT_OVERVIEW_FILENAME}:`,
+            JSON.stringify(fileData, null, 2) // Log the whole object
+          );
+        }
+        // DEBUG LOGGING END
 
         results.push(fileData);
 
