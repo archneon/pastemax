@@ -27,8 +27,8 @@ module.exports = {
     // JavaScript/TypeScript related
     ".eslintrc*",
     ".prettierrc*",
-    "tsconfig*.json",
-    "*.d.ts",
+    // "tsconfig*.json",
+    // "*.d.ts",
     "*.min.js",
     "*.map",
 

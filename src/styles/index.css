@@ -15,6 +15,7 @@
   --accent-purple: #9b59b6;
   --primary-button-background: #000000;
   --primary-button-text: #ffffff;
+  --accent-green: #27ae60; /* Green for Cursor Rules */
 }
 
 .dark-mode {
@@ -34,6 +35,7 @@
   --accent-purple: #bb86fc;
   --primary-button-background: #0e639c;
   --primary-button-text: #ffffff;
+  --accent-green: #2ecc71; /* Lighter green for dark mode */
 }
 
 * {

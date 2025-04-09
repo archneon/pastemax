@@ -60,6 +60,13 @@ export const PROMPT_MARKERS = {
 // Section Definitions - ORDER MATTERS for output and structured UI!
 export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
   {
+    id: "cursor_rules", // Unique ID for this section
+    name: "CURSOR_RULES", // Name used for prompt markers (@@@@_CURSOR_RULES_START)
+    label: "Cursor Rules", // Label displayed in the UI
+    directory: ".cursor/rules", // Directory path to match
+    color: "var(--accent-green)", // Use the newly defined green color variable
+  },
+  {
     id: "rules", // Used as key and for description lookup
     name: "RULES",
     label: "Rules",

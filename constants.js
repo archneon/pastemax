@@ -25,6 +25,11 @@ const PROMPT_OVERVIEW_FILENAME = "prompt-overview";
 // Section definitions for main process categorization
 const PROMPT_SECTIONS = [
   {
+    id: "cursor_rules",
+    name: "CURSOR_RULES",
+    directory: ".cursor/rules",
+  },
+  {
     id: "rules",
     name: "RULES",
     directory: "ai/rules",
