@@ -28,11 +28,15 @@ const PROMPT_SECTIONS = [
     id: "cursor_rules",
     name: "CURSOR_RULES",
     directory: ".cursor/rules",
+    removeMdcMetadata: true,
+    concatenateContent: true,
   },
   {
     id: "rules",
     name: "RULES",
     directory: "ai/rules",
+    removeMdcMetadata: true,
+    concatenateContent: true,
   },
   {
     id: "scraped",

@@ -65,6 +65,8 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     label: "Cursor Rules", // Label displayed in the UI
     directory: ".cursor/rules", // Directory path to match
     color: "var(--accent-green)", // Use the newly defined green color variable
+    removeMdcMetadata: true, // Remove YAML frontmatter from .mdc files
+    concatenateContent: true, // Combine all files in this section into one block
   },
   {
     id: "rules", // Used as key and for description lookup
@@ -72,6 +74,8 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     label: "Rules",
     directory: "ai/rules",
     color: "var(--warning-color)",
+    removeMdcMetadata: true, // Remove YAML frontmatter from .mdc files
+    concatenateContent: true, // Combine all files in this section into one block
   },
   {
     id: "scraped",

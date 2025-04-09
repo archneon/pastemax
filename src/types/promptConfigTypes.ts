@@ -4,4 +4,6 @@ export interface PromptSectionDefinition {
   label: string; // Name for UI display (e.g., 'Rules', 'Docs')
   directory: string | null; // Relative path from project root for categorization (null for default)
   color: string; // CSS color string for UI
+  removeMdcMetadata?: boolean; // If true, removes YAML frontmatter from .mdc files
+  concatenateContent?: boolean; // If true, combines all files in the section into one block
 }

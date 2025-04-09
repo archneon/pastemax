@@ -57,3 +57,37 @@ export const categorizeFile = (
 
   return defaultSectionId;
 };
+
+/**
+ * Removes YAML frontmatter (between ---) from the beginning of a string.
+ * @param content The file content
+ * @returns Content without the frontmatter block.
+ */
+export const removeMdcFrontmatter = (content: string): string => {
+  if (!content || !content.startsWith("---")) {
+    return content; // Nothing to remove or no frontmatter
+  }
+
+  const endOfFrontmatter = content.indexOf("\n---", 4); // Look for second '---' after first
+
+  if (endOfFrontmatter === -1) {
+    return content; // Didn't find closing marker, return original
+  }
+
+  // Find first line break *after* closing marker
+  let startOfContent = content.indexOf("\n", endOfFrontmatter + 4); // +4 to skip '\n---'
+
+  // If no line break after marker (maybe end of file)
+  if (startOfContent === -1) {
+    // Check if there's any content after the marker
+    if (content.length > endOfFrontmatter + 4) {
+      startOfContent = endOfFrontmatter + 4; // Take everything after marker
+    } else {
+      return ""; // No content after marker
+    }
+  } else {
+    startOfContent += 1; // Move to start of next line
+  }
+
+  return content.substring(startOfContent);
+};

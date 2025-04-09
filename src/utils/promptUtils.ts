@@ -1,5 +1,9 @@
 import { FileData } from "../types/FileTypes";
-import { formatMarker, categorizeFile } from "./formatUtils";
+import {
+  formatMarker,
+  categorizeFile,
+  removeMdcFrontmatter,
+} from "./formatUtils";
 import {
   generateAsciiFileTree,
   getRelativePath,
@@ -13,6 +17,7 @@ import {
   PASTEMAX_DIR,
   PROMPT_OVERVIEW_FILENAME,
 } from "../constants";
+import { PromptSectionDefinition } from "../types/promptConfigTypes";
 
 // Define the structure for the input state needed by the generator
 interface PromptDataArgs {
@@ -121,18 +126,50 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
         section_name: section.name,
       }) + "\n\n";
 
-    // Add files in this section
-    sectionFiles.forEach((file) => {
-      const relativePath = getRelativePath(file.path, selectedFolder);
-      mainOutput +=
-        formatMarker(PROMPT_MARKERS.file_open, { file_path: relativePath }) +
-        "\n";
-      mainOutput += file.content || "";
-      if (file.content && !file.content.endsWith("\n")) mainOutput += "\n";
-      mainOutput +=
-        formatMarker(PROMPT_MARKERS.file_close, { file_path: relativePath }) +
-        "\n\n";
-    });
+    // Check if content should be concatenated
+    if (section.concatenateContent) {
+      logger.debug(`Concatenating content for section: ${section.name}`);
+      let combinedContent = "";
+      sectionFiles.forEach((file) => {
+        let fileContent = file.content || "";
+        // Check if metadata should be removed
+        if (section.removeMdcMetadata && file.name.endsWith(".mdc")) {
+          logger.debug(`Removing MDC metadata from: ${file.name}`);
+          fileContent = removeMdcFrontmatter(fileContent);
+        }
+        // Add separator between files
+        if (combinedContent.length > 0) {
+          combinedContent += "\n\n---\n\n"; // Separator between rules/content
+        }
+        combinedContent += fileContent.trim(); // Trim to remove extra whitespace/lines
+      });
+
+      // Add combined content (without FILE_START/END)
+      if (combinedContent.length > 0) {
+        // Only add if not empty
+        mainOutput += combinedContent + "\n\n";
+      }
+    } else {
+      // Standard behavior: each file separately
+      sectionFiles.forEach((file) => {
+        let fileContent = file.content || "";
+        // Check if metadata should be removed (even if not concatenating)
+        if (section.removeMdcMetadata && file.name.endsWith(".mdc")) {
+          logger.debug(`Removing MDC metadata from: ${file.name}`);
+          fileContent = removeMdcFrontmatter(fileContent);
+        }
+
+        const relativePath = getRelativePath(file.path, selectedFolder);
+        mainOutput +=
+          formatMarker(PROMPT_MARKERS.file_open, { file_path: relativePath }) +
+          "\n";
+        mainOutput += fileContent; // Use (potentially cleaned) content
+        if (fileContent && !fileContent.endsWith("\n")) mainOutput += "\n";
+        mainOutput +=
+          formatMarker(PROMPT_MARKERS.file_close, { file_path: relativePath }) +
+          "\n\n";
+      });
+    }
 
     // Add section end marker
     mainOutput +=
@@ -153,9 +190,15 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
   // Explain present sections
   for (const section of PROMPT_SECTIONS) {
     if (presentSectionNames.has(section.name)) {
-      dynamicExplanations += `- ${section.name}: Contains files from the ${
+      let description = `Contains files from the ${
         section.directory || "project"
-      } directory.\n`;
+      } directory.`;
+      if (section.concatenateContent) {
+        description = `Contains combined content from files in the ${
+          section.directory || "project"
+        } directory.`;
+      }
+      dynamicExplanations += `- ${section.name}: ${description}\n`;
     }
   }
 
@@ -179,7 +222,7 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
   }
 
   // Combine everything
-  const finalOutput = overviewBlock + mainOutput.trim();
+  const finalOutput = (overviewBlock + mainOutput.trim()).trim(); // Trim final output
 
   return (
     finalOutput ||
