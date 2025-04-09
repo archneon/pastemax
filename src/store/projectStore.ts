@@ -15,8 +15,8 @@ import {
   MAX_RECENT_FOLDERS,
   // LOCAL_STORAGE_KEYS, // Only needed if used directly, middleware handles name
 } from "../constants";
-import { normalizePath, arePathsEqual } from "../utils/pathUtils";
-import logger from "../utils/logger";
+import { normalizePath, arePathsEqual } from "../utils/pathUtils"; // Added normalizePath
+import logger from "../utils/logger"; // Added logger
 
 // Define the default state for a single project when it's first created
 // Export it so App.tsx can import it for default values in selectors
@@ -187,12 +187,88 @@ export const useProjectStore = create<ProjectState>()(
         });
       },
 
+      // --- CORRECTED setAllFiles ACTION ---
       setAllFiles: (files: FileData[]) => {
-        logger.debug(`Action: setAllFiles, received ${files.length} files`);
-        // Optionally, reset the reload flag here IF this is the only way files are loaded initially
-        // However, the useEffect in App which calls setNeedsFilesReload(false) is probably better.
-        set({ allFiles: files /*, _needsFilesReload: false */ });
+        logger.debug(
+          `Action: setAllFiles, received ${files.length} files. Performing cleanup of selectedFiles.`
+        );
+
+        const currentFolder = get().currentSelectedFolder;
+        let cleanedSelectedFiles: string[] | undefined = undefined; // Store cleaned list
+
+        if (currentFolder) {
+          const projectState = get().projects[currentFolder];
+          if (projectState && projectState.selectedFiles.length > 0) {
+            // Create Set of valid normalized paths from the newly received files
+            const validPaths = new Set(
+              files.map((file) => normalizePath(file.path))
+            );
+            logger.debug(`Valid paths in new file list: ${validPaths.size}`);
+
+            // Filter existing selectedFiles
+            const currentSelected = projectState.selectedFiles;
+            cleanedSelectedFiles = currentSelected.filter((selectedPath) =>
+              validPaths.has(normalizePath(selectedPath))
+            );
+
+            if (cleanedSelectedFiles.length !== currentSelected.length) {
+              logger.info(
+                `Cleaned selectedFiles for ${currentFolder}. Removed ${
+                  currentSelected.length - cleanedSelectedFiles.length
+                } stale entries. New count: ${cleanedSelectedFiles.length}`
+              );
+            } else {
+              logger.debug(
+                `No stale entries found in selectedFiles for ${currentFolder}.`
+              );
+              // No need to update if no changes
+              cleanedSelectedFiles = undefined; // Indicate no change needed for selectedFiles
+            }
+          } else {
+            logger.debug(
+              `No project state or no selected files to clean for ${currentFolder}.`
+            );
+          }
+        } else {
+          logger.warn(
+            "Action: setAllFiles called but no folder is selected. Cannot clean selectedFiles."
+          );
+        }
+
+        // Update state
+        set((state: ProjectState) => {
+          let updatedProjects = state.projects;
+
+          // Update selectedFiles in projects only if changes were actually made
+          if (currentFolder && cleanedSelectedFiles !== undefined) {
+            const projectState = state.projects[currentFolder];
+            if (projectState) {
+              updatedProjects = {
+                ...state.projects,
+                [currentFolder]: {
+                  ...projectState,
+                  selectedFiles: cleanedSelectedFiles, // Use the cleaned list
+                  lastAccessed: Date.now(), // Update access time
+                },
+              };
+            }
+          }
+
+          return {
+            allFiles: files, // Always update allFiles
+            projects: updatedProjects, // Update projects if needed
+            processingStatus: {
+              // Set status to complete as files are received
+              status: "complete",
+              message: `Loaded ${files.length} files.`,
+            },
+            // Reset _needsFilesReload NOW that files are loaded and processed
+            _needsFilesReload: false,
+          };
+        });
+        logger.debug("Action: setAllFiles completed.");
       },
+      // --- END CORRECTED setAllFiles ACTION ---
 
       setProcessingStatus: (status: ProcessingStatus) => {
         if (JSON.stringify(get().processingStatus) !== JSON.stringify(status)) {

@@ -1,9 +1,17 @@
+// src/hooks/useIpcManager.ts
 import { useEffect, useCallback } from "react";
 import { useProjectStore } from "../store/projectStore";
 import logger from "../utils/logger";
 import { FileData } from "../types/FileTypes";
 import { ProcessingStatus } from "../types/projectStateTypes";
-import { PROMPT_SECTIONS } from "../constants";
+// --- DODANI IMPORTI ---
+import {
+  PROMPT_SECTIONS,
+  PASTEMAX_DIR,
+  PROMPT_OVERVIEW_FILENAME,
+} from "../constants";
+import { normalizePath } from "../utils/pathUtils"; // Potrebujemo normalizePath
+// --- KONEC DODANIH IMPORTOV ---
 import { categorizeFile } from "../utils/formatUtils";
 
 /**
@@ -50,39 +58,51 @@ export const useIpcManager = () => {
       const categorizedFiles = filesArray.map((file) => ({
         ...file,
         // Trust the sectionId from the backend FIRST
+        // Overview file bo imel null sectionId iz backenda, kar je ok.
         sectionId:
           file.sectionId ||
           categorizeFile(file, currentSelectedFolder, PROMPT_SECTIONS),
+        // fileKind ostane tak, kot ga je poslal backend (verjetno "regular")
       }));
 
-      // DEBUG LOGGING START
+      // --- POPRAVLJENO DEBUG LOGGING ---
       logger.debug(
         "[IPC Manager] Received files count:",
         categorizedFiles.length
       );
-      const overviewFileReceived = categorizedFiles.find(
-        (f) => f.fileKind === "overview"
-      );
+
+      // Poišči overview datoteko po POTI, ne po fileKind
+      const overviewExpectedPath = currentSelectedFolder
+        ? normalizePath(
+            `${currentSelectedFolder}/${PASTEMAX_DIR}/${PROMPT_OVERVIEW_FILENAME}`
+          )
+        : null;
+
+      const overviewFileReceived = overviewExpectedPath
+        ? categorizedFiles.find(
+            (f) => normalizePath(f.path) === overviewExpectedPath
+          )
+        : null;
+
       if (overviewFileReceived) {
         logger.debug(
-          "[IPC Manager] Overview file data received:",
+          `[IPC Manager] Overview file (${PROMPT_OVERVIEW_FILENAME}) data received (found by path):`,
           JSON.stringify(overviewFileReceived, null, 2)
         );
       } else {
-        logger.warn("[IPC Manager] Overview file not found in received data.");
+        logger.warn(
+          `[IPC Manager] Overview file (${PROMPT_OVERVIEW_FILENAME}) not found in received data (checked by path: ${overviewExpectedPath}).`
+        );
       }
-      // DEBUG LOGGING END
+      // --- KONEC POPRAVLJENEGA DEBUG LOGGINGA ---
 
       logger.info(
         `IPC: Setting ${categorizedFiles.length} categorized files in store.`
       );
+      // Akcija setAllFiles zdaj poskrbi za čiščenje selectedFiles in nastavitev statusa na "complete"
       setStoreAllFilesAction(categorizedFiles);
-      setStoreProcessingStatusAction({
-        status: "complete",
-        message: `Loaded ${categorizedFiles.length} files`,
-      });
     },
-    [setStoreAllFilesAction, setStoreProcessingStatusAction]
+    [setStoreAllFilesAction] // Odstranjen setStoreProcessingStatusAction, ker ga kliče setAllFiles
   );
 
   const handleProcessingStatusIPC = useCallback(
@@ -90,7 +110,15 @@ export const useIpcManager = () => {
       logger.info(
         `IPC: file-processing-status received: ${status.status} - ${status.message}`
       );
-      setStoreProcessingStatusAction(status);
+      // Preveri, ali je status že "complete", ker ga morda nastavi setAllFiles
+      const currentStatus = useProjectStore.getState().processingStatus;
+      if (currentStatus.status !== "complete" || status.status !== "complete") {
+        setStoreProcessingStatusAction(status);
+      } else {
+        logger.debug(
+          "Skipping setting status to complete, already handled by setAllFiles."
+        );
+      }
     },
     [setStoreProcessingStatusAction]
   );
@@ -104,6 +132,7 @@ export const useIpcManager = () => {
         `Handler: requestFileList for ${folderPath}, forceRefresh: ${forceRefresh}`
       );
 
+      // Vedno nastavi status na processing ob začetku zahteve
       setStoreProcessingStatusAction({
         status: "processing",
         message: forceRefresh
@@ -116,7 +145,7 @@ export const useIpcManager = () => {
         forceRefresh: forceRefresh,
       });
     },
-    [isElectron, setStoreProcessingStatusAction]
+    [isElectron, setStoreProcessingStatusAction] // Odvisnost od setStoreProcessingStatusAction ostane
   );
 
   // --- Effect to Setup/Cleanup Listeners ---
