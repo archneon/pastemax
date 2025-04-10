@@ -26,14 +26,14 @@ const PROMPT_OVERVIEW_FILENAME = "prompt-overview";
 const PROMPT_SECTIONS = [
   {
     id: "cursor_rules",
-    name: "CURSOR_RULES",
+    name: "STANDARD_RULES",
     directory: ".cursor/rules",
     removeMdcMetadata: true,
     concatenateContent: true,
   },
   {
     id: "rules",
-    name: "RULES",
+    name: "DETAILED_RULES",
     directory: "ai/rules",
     removeMdcMetadata: true,
     concatenateContent: true,

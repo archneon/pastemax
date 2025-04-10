@@ -6,4 +6,5 @@ export interface PromptSectionDefinition {
   color: string; // CSS color string for UI
   removeMdcMetadata?: boolean; // If true, removes YAML frontmatter from .mdc files
   concatenateContent?: boolean; // If true, combines all files in the section into one block
+  description?: string; // Optional description for the section intro
 }

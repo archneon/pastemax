@@ -30,6 +30,18 @@ interface PromptDataArgs {
 }
 
 /**
+ * Helper function to get the full section config object for a file
+ */
+const getSectionConfigForFile = (
+  file: FileData,
+  sections: PromptSectionDefinition[],
+  selectedFolder: string | null
+): PromptSectionDefinition | undefined => {
+  const sectionId = categorizeFile(file, selectedFolder, sections);
+  return sections.find((s) => s.id === sectionId);
+};
+
+/**
  * Generates the final prompt string based on selected files and settings.
  * @param args - Object containing all necessary state slices.
  * @returns The generated prompt string.
@@ -87,27 +99,50 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
   let mainOutput = "";
   const presentSectionNames = new Set<string>();
 
-  // Generate the file tree if requested
-  if (includeFileTree && selectedFolder) {
+  // --- SPREMEMBA ZA PROJECT_TREE ---
+  // 1. Filtriraj datoteke, ki bodo prikazane v drevesu
+  const filesForTree = sortedContentFiles.filter((file) => {
+    const sectionConfig = getSectionConfigForFile(
+      file,
+      PROMPT_SECTIONS,
+      selectedFolder
+    );
+    // Vključi datoteko, če sekcija ni najdena (pade pod default)
+    // ali če sekcija JE najdena, ampak NIMA concatenateContent: true
+    return !sectionConfig || !sectionConfig.concatenateContent;
+  });
+
+  logger.debug(
+    `Original selected content files: ${sortedContentFiles.length}, Files eligible for tree: ${filesForTree.length}`
+  );
+
+  // 2. Generate the file tree only if requested AND if there are files to show
+  if (includeFileTree && selectedFolder && filesForTree.length > 0) {
     mainOutput +=
       formatMarker(PROMPT_MARKERS.section_open, {
         section_name: "PROJECT_TREE",
       }) + "\n";
     mainOutput += ".\n";
-    const asciiTree = generateAsciiFileTree(sortedContentFiles, selectedFolder);
+    // 3. Pass the filtered list to the tree generator
+    const asciiTree = generateAsciiFileTree(filesForTree, selectedFolder);
     mainOutput += asciiTree + "\n";
     mainOutput +=
       formatMarker(PROMPT_MARKERS.section_close, {
         section_name: "PROJECT_TREE",
       }) + "\n\n";
     presentSectionNames.add("PROJECT_TREE");
+  } else if (includeFileTree) {
+    logger.debug(
+      "Skipping PROJECT_TREE generation: No eligible files after filtering concatenated ones."
+    );
   }
+  // --- KONEC SPREMEMBE ZA PROJECT_TREE ---
 
-  // Process files by section
+  // Process files by section (uporabi originalni sortedContentFiles za vsebino)
   const filesBySection: Record<string, FileData[]> = {};
   sortedContentFiles.forEach((file) => {
-    const sectionId =
-      file.sectionId || categorizeFile(file, selectedFolder, PROMPT_SECTIONS);
+    // Še vedno iteriraj čez vse izbrane datoteke za vsebino
+    const sectionId = categorizeFile(file, selectedFolder, PROMPT_SECTIONS);
     if (!filesBySection[sectionId]) filesBySection[sectionId] = [];
     filesBySection[sectionId].push(file);
   });
@@ -125,6 +160,11 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
       formatMarker(PROMPT_MARKERS.section_open, {
         section_name: section.name,
       }) + "\n\n";
+
+    // Check if a description exists and add it
+    if (section.description && section.description.trim().length > 0) {
+      mainOutput += section.description.trim() + "\n\n"; // Add description and two newlines
+    }
 
     // Check if content should be concatenated
     if (section.concatenateContent) {
@@ -184,7 +224,7 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
   // Explain file tree if present
   if (presentSectionNames.has("PROJECT_TREE")) {
     dynamicExplanations +=
-      "- PROJECT_TREE: Shows the directory structure of included files.\n";
+      "- PROJECT_TREE: Shows the directory structure of included files (excluding combined rule files).\n";
   }
 
   // Explain present sections
@@ -194,7 +234,7 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
         section.directory || "project"
       } directory.`;
       if (section.concatenateContent) {
-        description = `Contains combined content from files in the ${
+        description = `Contains combined rules and instructions from files in the ${
           section.directory || "project"
         } directory.`;
       }
@@ -222,7 +262,7 @@ export const generatePromptContent = (args: PromptDataArgs): string => {
   }
 
   // Combine everything
-  const finalOutput = (overviewBlock + mainOutput.trim()).trim(); // Trim final output
+  const finalOutput = (overviewBlock + mainOutput.trim()).trim();
 
   return (
     finalOutput ||

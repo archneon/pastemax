@@ -60,22 +60,33 @@ export const PROMPT_MARKERS = {
 // Section Definitions - ORDER MATTERS for output and structured UI!
 export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
   {
-    id: "cursor_rules", // Unique ID for this section
-    name: "CURSOR_RULES", // Name used for prompt markers (@@@@_CURSOR_RULES_START)
-    label: "Cursor Rules", // Label displayed in the UI
-    directory: ".cursor/rules", // Directory path to match
-    color: "var(--accent-green)", // Use the newly defined green color variable
-    removeMdcMetadata: true, // Remove YAML frontmatter from .mdc files
-    concatenateContent: true, // Combine all files in this section into one block
+    id: "cursor_rules",
+    name: "STANDARD_RULES",
+    label: "Cursor Rules",
+    directory: ".cursor/rules",
+    color: "var(--accent-green)",
+    removeMdcMetadata: true,
+    concatenateContent: true,
+    description:
+      "%%%% META-INSTRUCTION: The following rules and instructions were written specifically for " +
+      "the Cursor AI agent environment. While these rules may sometimes reference agentic tasks " +
+      "(such as executing commands), you (as an assistant) should still fully respect and follow " +
+      "them for architecture, code style, and workflow decisions. Treat them as strict coding and " +
+      "project standards.",
   },
   {
-    id: "rules", // Used as key and for description lookup
-    name: "RULES",
+    id: "rules",
+    name: "DETAILED_RULES",
     label: "Rules",
     directory: "ai/rules",
     color: "var(--warning-color)",
-    removeMdcMetadata: true, // Remove YAML frontmatter from .mdc files
-    concatenateContent: true, // Combine all files in this section into one block
+    removeMdcMetadata: true,
+    concatenateContent: true,
+    description:
+      "%%%% META-INSTRUCTION: The following are detailed project-specific rules and guidelines. " +
+      "They were written for AI assistants with extended context capabilities. Follow these rules " +
+      "precisely to align with the project's coding practices, architectural decisions, and overall " +
+      "quality standards.",
   },
   {
     id: "scraped",
@@ -83,6 +94,11 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     label: "Scraped Docs",
     directory: "ai/scraped",
     color: "var(--success-color)",
+    description:
+      "%%%% META-INSTRUCTION: The following documentation was scraped directly from official " +
+      "framework or package sources. It reflects the latest available version-specific information, " +
+      "which may not be part of your pre-trained knowledge. Always treat this documentation as the " +
+      "source of truth for technical details, APIs, and behavior.",
   },
   {
     id: "docs",
@@ -90,13 +106,21 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     label: "Project Docs",
     directory: "ai/docs",
     color: "var(--accent-purple)",
+    description:
+      "%%%% META-INSTRUCTION: The following section contains additional project-specific documentation. " +
+      "It may include decisions, guidelines, implementation notes, or any important project context. " +
+      "Use this knowledge to better understand the project and to produce relevant, context-aware output.",
   },
   {
-    id: "project_files", // Default section
+    id: "project_files",
     name: "PROJECT_FILES",
     label: "Project",
-    directory: null, // Indicates this is the default/fallback
+    directory: null,
     color: "var(--accent-blue)",
+    description:
+      "%%%% META-INSTRUCTION: The following section contains source code files, configuration files, " +
+      "and any other assets from the project repository. Use these files to analyze the codebase, " +
+      "understand project structure, and make informed implementation decisions.",
   },
   {
     id: "prompts",
@@ -104,5 +128,9 @@ export const PROMPT_SECTIONS: PromptSectionDefinition[] = [
     label: "Prompts",
     directory: "ai/prompts",
     color: "var(--error-color)",
+    description:
+      "%%%% META-INSTRUCTION: The following section contains reusable prompt templates and prompt " +
+      "snippets designed for this project. Use them as references or building blocks when generating " +
+      "new prompts, ensuring consistency with existing patterns and conventions.",
   },
 ];
