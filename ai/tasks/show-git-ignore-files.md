@@ -1,124 +1,152 @@
-Pozdravljen Cursor agent! Z Gemini modelom sem se pogovarjal kako bi prikazal datoteke, ki so v .gitignore. Dodal sem konstanto `SHOW_GITIGNORED_FILES` v datoteko `constants.js` in jo nastavil na `true`. Tukaj pa je priblizen implementacijski nacrt za to spremembo.
+Pozdravljen Cursor agent! Imam ta Pastemax projekt, ki je namenjen copy pastanju datotek za AI modele. Ko nalozim neki projekt v Pastemax, se v sidebaru
+do zdaj niso prikazovale datoteke, ki so bile v `.gitignore`.
+
+Z gemini sem se pogovarjal o implementaciji, ki bi omogočala prikaz datotek, ki so bile dovoljene kljub vnosu v `.gitignore`.
 
 GEMINI 2.5 PRO ODGOVOR:
 
-Odlično, zdaj imam pravo kodo projekta Pastemax! Pregledal sem strukturo in datoteke.
+Prav imaš, tisti pristop z enostavnim boolean stikalom je bil preveč grob in bi povzročil težave z zmogljivostjo, ker bi vključil _vse_, kar je v `.gitignore`, vključno z `node_modules`. Odlično, da si opazil in povrnil spremembe!
 
-**Potrditev lokacije konstante:**
+Tvoja ideja, da specificiramo **točno določene datoteke ali vzorce**, ki naj bodo **dovoljeni kljub vnosu v `.gitignore`**, je veliko boljša in bolj ciljno usmerjena.
 
-Da, tvoja odločitev, da konstanto `SHOW_GITIGNORED_FILES` dodaš v datoteko `constants.js` **v korenu projekta**, je bila **pravilna**. Ta datoteka se uporablja v glavnem Electron procesu, natančneje v `electron/fileProcessor.js`, ki je odgovoren za branje in filtriranje datotek, vključno z upoštevanjem `.gitignore`.
+**Predlog: Uporaba nove datoteke `allowed-files.js`**
 
-**Implementacijski načrt (celoten):**
+Strinjam se s tvojo idejo o dodajanju nove datoteke. Čeprav bi lahko teoretično dodali seznam v `constants.js`, bi nova datoteka (npr. `allowed-files.js` ali `include-rules.js`) sledila vzorcu obstoječe `excluded-files.js` in bi bila bolj pregledna ter lažje vzdrževana, če bi seznam dovoljenih datotek kdaj narastel. Poimenujmo jo `allowed-files.js`.
 
-Spremembe moramo narediti samo v eni datoteki: `electron/fileProcessor.js`.
+**Implementacijski načrt (z uporabo `allowed-files.js`):**
 
-1.  **Uvoz konstante `SHOW_GITIGNORED_FILES`:**
+1.  **Ustvari datoteko `allowed-files.js`:**
 
-    - Odpri datoteko `electron/fileProcessor.js`.
-    - Na vrhu datoteke, kjer uvažaš ostale konstante iz `../constants`, dodaj `SHOW_GITIGNORED_FILES`.
+    - V korenu projekta (ob `constants.js` in `excluded-files.js`) ustvari novo datoteko z imenom `allowed-files.js`.
+    - V to datoteko dodaj seznam vzorcev (lahko so glob vzorci ali natančne poti relativno na koren projekta), ki jih želiš _vedno_ vključiti, tudi če so v `.gitignore`.
+
+    ```javascript
+    // allowed-files.js
+    /**
+     * Seznam datotek ali vzorcev (glob), ki naj bodo VEDNO vključeni v pregled,
+     * četudi so navedeni v .gitignore datoteki projekta.
+     * Ta pravila imajo prednost pred .gitignore.
+     */
+    const allowedGitignoredPatterns = [
+      // Natančne poti do datotek, ki jih želiš vedno vključiti:
+      ".env.development",
+      ".env.production",
+      ".env.test",
+      ".env.live",
+
+      // Lahko dodaš tudi druge vzorce, npr.:
+      // 'config/secrets.yml',
+      // 'private_docs/**/*.md'
+    ];
+
+    module.exports = {
+      allowedGitignoredPatterns,
+    };
+    ```
+
+2.  **Prilagodi `electron/fileProcessor.js`:**
+
+    - **Uvozi nov seznam:** Na vrhu datoteke uvozi `allowedGitignoredPatterns` iz nove datoteke. Prav tako se prepričaj, da je knjižnica `ignore` uvožena.
+    - **Ustvari filter za dovoljene datoteke:** Takoj po uvozu ustvari novo instanco `ignore` filtra, ki bo vsebovala _samo_ pravila iz `allowedGitignoredPatterns`. Ta filter bomo uporabili za preverjanje, ali je datoteka eksplicitno dovoljena.
 
     ```javascript
     // electron/fileProcessor.js
-    // ... drugi require stavki ...
+    const fs = require("fs");
+    const path = require("path");
+    const log = require("electron-log");
+    const ignore = require("ignore"); // <<< PREPRIČAJ SE, DA JE IMPORTAN
+
+    // Import utilities and constants
     const {
-      MAX_FILE_SIZE,
-      PASTEMAX_DIR,
-      PROMPT_OVERVIEW_FILENAME,
-      PROMPT_SECTIONS,
-      SHOW_GITIGNORED_FILES, // <<< PREVERI/DODAJ TO VRSTICO
-    } = require("../constants"); // Goes up one level
-    // ... ostali require stavki ...
+      /* ... druge konstante ... */
+    } = require("../constants");
+    const {
+      excludedFiles,
+      binaryExtensions: userBinaryExtensions,
+    } = require("../excluded-files");
+    const {
+      BINARY_EXTENSIONS: defaultBinaryExtensions,
+    } = require("./config/binaryExtensions");
+    const { allowedGitignoredPatterns } = require("../allowed-files"); // <<< UVOZ NOVEGA SEZNAMA
+
+    // ... kombiniranje ALL_BINARY_EXTENSIONS ...
+
+    // Filter za datoteke, ki so EKSPLICITNO DOVOLJENE kljub .gitignore
+    const allowedFilter = ignore().add(allowedGitignoredPatterns || []); // <<< USTVARI FILTER ZA DOVOLJENE
+    log.debug(
+      `Created allowedFilter with ${
+        allowedGitignoredPatterns?.length || 0
+      } patterns.`
+    );
+
+    // ... ostala koda (normalizePath, loadGitignore, isBinaryFile) ...
     ```
 
-2.  **Prilagoditev funkcije `loadGitignore`:**
-
-    - Poišči funkcijo `loadGitignore(rootDir)`.
-    - Poišči del kode znotraj te funkcije, ki bere vsebino `.gitignore` datoteke iz projekta (`fs.readFileSync(gitignorePath, "utf8")`) in dodaja pravila (`ig.add(gitignoreContent)`).
-    - Celoten `if (fs.existsSync(gitignorePath)) { ... }` blok obdaj s pogojem `if (!SHOW_GITIGNORED_FILES) { ... }`. S tem bo branje in dodajanje pravil iz projektnega `.gitignore` preskočeno, če je `SHOW_GITIGNORED_FILES` nastavljeno na `true`. Ostala pravila (iz `excluded-files.js` in `.git`) bodo še vedno veljala.
-
-    ```javascript
-    // ... znotraj funkcije loadGitignore ...
-
-    // Add rules from the project's .gitignore file, if it exists AND we are respecting gitignore
-    // ---- START SPREMEMBE ----
-    if (!SHOW_GITIGNORED_FILES) {
-      if (fs.existsSync(gitignorePath)) {
-        try {
-          const gitignoreContent = fs.readFileSync(gitignorePath, "utf8");
-          ig.add(gitignoreContent);
-          log.debug(`Loaded .gitignore rules from ${gitignorePath}`);
-        } catch (err) {
-          log.error(`Error reading .gitignore file at ${gitignorePath}:`, err);
-        }
-      } else {
-        log.debug(`.gitignore not found in ${rootDir}`);
-      }
-    } else {
-      log.debug(
-        `SHOW_GITIGNORED_FILES is true, skipping project .gitignore file.`
-      );
-    }
-    // ---- KONEC SPREMEMBE ----
-
-    return ig;
-    }
-    ```
-
-3.  **Prilagoditev funkcije `readFilesRecursively`:**
-
-    - Poišči funkcijo `readFilesRecursively(dir, rootDir, ignoreFilter, eventSender)`.
-    - Poišči vrstico, kjer se preverja, ali je treba datoteko/direktorij preskočiti zaradi pravil ignore:
-      ```javascript
-      if (relativePath && ignoreFilter.ignores(relativePath)) {
-        continue;
-      }
-      ```
-    - Spremeni to vrstico, da bo upoštevala konstanto `SHOW_GITIGNORED_FILES`:
+    - **Prilagodi logiko filtriranja v `readFilesRecursively`:** Spremeniti moramo logiko preverjanja izključitve. Nova logika bo:
+      1. Preveri, ali datoteko ignorira glavni filter (`ignoreFilter`, ki vsebuje `.gitignore` + `excluded-files.js` + `.git`).
+      2. Če jo ignorira, preveri, ali jo morda eksplicitno dovoljuje naš novi `allowedFilter`.
+      3. Preskoči datoteko **samo**, če jo glavni filter ignorira **IN** je novi filter _ne_ dovoljuje.
 
     ```javascript
-    // ... znotraj zanke for ... of dirents v readFilesRecursively ...
+    // ... znotraj zanke for...of v readFilesRecursively ...
         const currentPath = path.join(dir, dirent.name);
         const normalizedFullPath = normalizePath(currentPath);
         const relativePath = normalizePath(path.relative(rootDir, currentPath));
 
-        // Exclusion Check
-        // ---- START SPREMEMBE ----
-        // Preskoči, če:
-        // 1. Obstaja relativna pot (ni koren)
-        // 2. *NE* želimo prikazati ignoriranih datotek (konstanta je false)
-        // 3. ignoreFilter dejansko ignorira to pot
-        if (
-          relativePath &&
-          !SHOW_GITIGNORED_FILES &&
-          ignoreFilter.ignores(relativePath)
-        ) {
+        // ---- START SPREMENJENE LOGIKE PREVERJANJA IZKLJUČITVE ----
+        let isIgnoredByMainFilter = false;
+        if (relativePath) {
+          isIgnoredByMainFilter = ignoreFilter.ignores(relativePath);
+        }
+
+        let isExplicitlyAllowed = false;
+        if (relativePath && isIgnoredByMainFilter) {
+          // Preveri dovoljeni filter SAMO, če jo glavni filter ignorira
+          // Če `allowedFilter.ignores()` vrne true, pomeni, da se pot ujema z DOVOLJENIM vzorcem
+          isExplicitlyAllowed = allowedFilter.ignores(relativePath);
+        }
+
+        // Preskoči datoteko SAMO, če jo glavni filter ignorira IN NI eksplicitno dovoljena
+        if (isIgnoredByMainFilter && !isExplicitlyAllowed) {
           log.debug(
-            `Ignoring ${relativePath} based on .gitignore (SHOW_GITIGNORED_FILES is false)`
+            `Ignoring ${relativePath} (ignored by main filter and not explicitly allowed)`
           );
           continue; // Preskoči ta element
         }
-        // ---- KONEC SPREMEMBE ----
+        // ---- KONEC SPREMENJENE LOGIKE PREVERJANJA IZKLJUČITVE ----
 
-        // ... ostala koda za obdelavo direktorijev in datotek ...
+        // Če pridemo do sem, datoteka ali ni ignorirana, ali pa je ignorirana, ampak eksplicitno dovoljena.
+        // Nadaljuj z obdelavo...
+        if (dirent.isDirectory()) {
+           // Preveri še enkrat za direktorij z '/' na koncu, če je potrebno (ignore lib to včasih zahteva)
+           const dirRelativePath = relativePath + '/';
+           const isDirIgnored = ignoreFilter.ignores(dirRelativePath);
+           const isDirAllowed = isDirIgnored ? allowedFilter.ignores(dirRelativePath) : false;
+
+           if(isDirIgnored && !isDirAllowed){
+                log.debug(`Ignoring directory ${dirRelativePath} explicitly.`);
+                continue;
+           }
+           // Procesiraj direktorij
+           results = results.concat(
+             readFilesRecursively(currentPath, rootDir, ignoreFilter, eventSender) // ignoreFilter se še vedno prenaša navzdol
+           );
+        } else if (dirent.isFile()) {
+          // Procesiraj datoteko (obstoječa logika ostane)
+          // ... (try-catch blok za branje, velikost, binarno, žetone, sectionId ostane) ...
+          results.push(fileData); // Dodaj obdelano datoteko
+        }
+    // ... konec zanke ...
     ```
 
-**Pojasnilo spremembe v `readFilesRecursively`:**
+3.  **Testiranje:**
+    - Ustavi Pastemax, če teče.
+    - Ustvari datoteko `allowed-files.js` z zgornjo vsebino (vsebuje `.env.*`).
+    - Naredi spremembe v `electron/fileProcessor.js` kot opisano zgoraj.
+    - Zaženi Pastemax (`npm run dev:electron`).
+    - Odpri Next.js projekt.
+    - **Preveri:**
+      - Ali se `.env.development`, `.env.production`, itd. prikažejo v stranski vrstici? **Morale bi se.**
+      - Ali so `node_modules`, `.git` in druge datoteke iz `.gitignore` (ki niso v `allowed-files.js`) še vedno skrite? **Morale bi biti.**
 
-- Pogoj `!SHOW_GITIGNORED_FILES` zagotavlja, da se preverjanje `ignoreFilter.ignores(relativePath)` izvede **samo**, če je konstanta nastavljena na `false` (torej, če želimo upoštevati `.gitignore`).
-- Če je `SHOW_GITIGNORED_FILES` nastavljena na `true`, bo del pogoja `!SHOW_GITIGNORED_FILES` ovrednoten kot `false`, zato celoten `if` pogoj ne bo nikoli izpolnjen in `continue` se ne bo izvedel zaradi `.gitignore` pravil (lahko se še vedno izvede zaradi drugih razlogov, npr. `MAX_FILE_SIZE`).
-
-**Naslednji koraki:**
-
-1.  Naredi zgoraj opisane spremembe v datoteki `electron/fileProcessor.js`.
-2.  **Testiranje:**
-    - V `constants.js` pusti `SHOW_GITIGNORED_FILES = true;`.
-    - Ponovno zaženi Pastemax (npr. z `npm run dev:electron`).
-    - Odpri Next.js projekt, ki si mi ga poslal prej.
-    - **Preveri:** Ali se v stranski vrstici zdaj prikažejo datoteke `.env.development`, `.env.production`, itd.? Morale bi se.
-    - Ustavi Pastemax.
-    - V `constants.js` spremeni `SHOW_GITIGNORED_FILES = false;`.
-    - Ponovno zaženi Pastemax.
-    - Odpri isti Next.js projekt.
-    - **Preveri:** Ali so datoteke `.env.development`, `.env.production`, itd. zdaj skrite? Morale bi biti.
-
-S temi koraki boš dosegel želeno funkcionalnost in imel kontrolo nad prikazom datotek, ki so v `.gitignore`.
+Ta pristop je veliko boljši, saj ohranja prednosti `.gitignore` za ignoriranje večine nepotrebnih datotek, hkrati pa ti daje natančen nadzor nad tem, katere specifične, sicer ignorirane datoteke, želiš vseeno vključiti.

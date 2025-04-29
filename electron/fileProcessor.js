@@ -19,6 +19,7 @@ const {
 const {
   BINARY_EXTENSIONS: defaultBinaryExtensions,
 } = require("./config/binaryExtensions");
+const { allowedGitignoredPatterns } = require("../allowed-files"); // Uvoz novega seznama
 
 // Combine default binary extensions with those from excluded-files.js
 const ALL_BINARY_EXTENSIONS = [
@@ -29,6 +30,14 @@ const ALL_BINARY_EXTENSIONS = [
 ];
 log.debug(
   `Combined list of ${ALL_BINARY_EXTENSIONS.length} binary extensions loaded.`
+);
+
+// Filter za datoteke, ki so EKSPLICITNO DOVOLJENE kljub .gitignore
+const allowedFilter = ignore().add(allowedGitignoredPatterns || []);
+log.debug(
+  `Created allowedFilter with ${
+    allowedGitignoredPatterns?.length || 0
+  } patterns.`
 );
 
 /**
@@ -106,14 +115,43 @@ function readFilesRecursively(dir, rootDir, ignoreFilter, eventSender) {
       const normalizedFullPath = normalizePath(currentPath);
       const relativePath = normalizePath(path.relative(rootDir, currentPath));
 
-      // Exclusion Check
-      if (relativePath && ignoreFilter.ignores(relativePath)) {
-        continue;
+      // ---- START SPREMENJENE LOGIKE PREVERJANJA IZKLJUČITVE ----
+      let isIgnoredByMainFilter = false;
+      if (relativePath) {
+        isIgnoredByMainFilter = ignoreFilter.ignores(relativePath);
       }
 
+      let isExplicitlyAllowed = false;
+      if (relativePath && isIgnoredByMainFilter) {
+        // Preveri dovoljeni filter SAMO, če jo glavni filter ignorira
+        // Če `allowedFilter.ignores()` vrne true, pomeni, da se pot ujema z DOVOLJENIM vzorcem
+        isExplicitlyAllowed = allowedFilter.ignores(relativePath);
+      }
+
+      // Preskoči datoteko SAMO, če jo glavni filter ignorira IN NI eksplicitno dovoljena
+      if (isIgnoredByMainFilter && !isExplicitlyAllowed) {
+        log.debug(
+          `Ignoring ${relativePath} (ignored by main filter and not explicitly allowed)`
+        );
+        continue; // Preskoči ta element
+      }
+      // ---- KONEC SPREMENJENE LOGIKE PREVERJANJA IZKLJUČITVE ----
+
       if (dirent.isDirectory()) {
+        // Preveri še enkrat za direktorij z '/' na koncu, če je potrebno (ignore lib to včasih zahteva)
+        const dirRelativePath = relativePath + "/";
+        const isDirIgnored = ignoreFilter.ignores(dirRelativePath);
+        const isDirAllowed = isDirIgnored
+          ? allowedFilter.ignores(dirRelativePath)
+          : false;
+
+        if (isDirIgnored && !isDirAllowed) {
+          log.debug(`Ignoring directory ${dirRelativePath} explicitly.`);
+          continue;
+        }
+        // Procesiraj direktorij
         results = results.concat(
-          readFilesRecursively(currentPath, rootDir, ignoreFilter, eventSender)
+          readFilesRecursively(currentPath, rootDir, ignoreFilter, eventSender) // ignoreFilter se še vedno prenaša navzdol
         );
       } else if (dirent.isFile()) {
         scannedCount++;
