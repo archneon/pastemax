@@ -111,7 +111,7 @@ module.exports = {
     "*.db",
 
     // Environment and secrets
-    ".env*",
+    // ".env*",
     ".aws/**",
     "*.pem",
     "*.key",

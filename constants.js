@@ -20,6 +20,12 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 // Constants for structured prompt output
 const PASTEMAX_DIR = ".pastemax";
+
+// If true, files listed in the project's .gitignore file will still be included
+// in the file tree shown in the sidebar.
+// If false (default), .gitignore rules will be respected, and matching files/folders will be hidden.
+const SHOW_GITIGNORED_FILES = true;
+
 const PROMPT_OVERVIEW_FILENAME = "prompt-overview";
 
 // Section definitions for main process categorization
@@ -64,6 +70,7 @@ module.exports = {
   IPC_CHANNELS,
   MAX_FILE_SIZE,
   PASTEMAX_DIR,
+  SHOW_GITIGNORED_FILES,
   PROMPT_OVERVIEW_FILENAME,
   PROMPT_SECTIONS,
   // Add any other constants needed only by main.js/preload.js here
